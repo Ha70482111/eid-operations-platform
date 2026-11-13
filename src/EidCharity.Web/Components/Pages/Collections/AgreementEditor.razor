@@ -1,0 +1,130 @@
+@page "/collections/agreements/new"
+@page "/collections/agreements/{Id:int}/edit"
+@attribute [Authorize(Policy = Perm.AgreementsManage)]
+@inherits EidPage
+
+<PageTitle>@T("اتفاقية تبرع", "Donation agreement")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C17" Title="@(Id is null ? T("اتفاقية جديدة", "New agreement") : T("تعديل مسودة الاتفاقية", "Edit agreement draft"))" Subtitle="@T("يجب أن يساوي مجموع الدفعات إجمالي الاتفاقية، وكل بند مرتبط بمشروع مؤهل.", "Installments must equal the agreement total, and each line is tied to an eligible project.")" />
+    <PageState Loading="Loading" Error="@Error">
+        <section class="data-card">
+            <div class="form-section">
+                <h3><Icon Name="user" />@T("المتبرع والتوقيع", "Donor & signing")</h3>
+                <div class="form-grid">
+                    <DonorPicker Label="@T("المتبرع", "Donor")" Required="true" Search="SearchDonors" Selected="_donor" SelectedChanged="DonorChanged" />
+                    <div class="field"><label>@T("تاريخ الاتفاقية", "Agreement date")</label><input type="date" @bind="_in.Date" /></div>
+                    @if (_donor?.Type == DonorType.Organization)
+                    {
+                        <div class="field"><label class="req">@T("ممثل التوقيع", "Signing representative")</label>
+                            <select @bind="_in.RepresentativeId"><option value="">—</option>
+                                @foreach (var r in _donor.Representatives.Where(r => r.CanSign)) { <option value="@r.Id">@r.Name — @r.Title</option> }
+                            </select></div>
+                    }
+                </div>
+            </div>
+            <div class="form-section">
+                <h3><Icon Name="folder-kanban" />@T("المشاريع والمبالغ", "Projects & amounts")</h3>
+                @foreach (var l in _in.Lines)
+                {
+                    <div class="form-grid three" style="align-items:end;margin-bottom:10px">
+                        <div class="field span-2"><label>@T("المشروع", "Project")</label>
+                            <select @bind="l.ProjectId"><option value="0">—</option>
+                                @foreach (var p in _projects) { <option value="@p.ProjectId">@p.ProjectCode — @Ui.N(p.NameAr, p.NameEn)</option> }
+                            </select></div>
+                        <div class="row" style="flex-wrap:nowrap"><div class="field grow"><label>@T("المبلغ", "Amount")</label><input type="number" step="0.01" @bind="l.Amount" dir="ltr" /></div>
+                            <button class="icon-btn" @onclick="() => _in.Lines.Remove(l)"><Icon Name="trash-2" /></button></div>
+                    </div>
+                }
+                <button class="text-action" @onclick="() => _in.Lines.Add(new AgreementLineInput())"><Icon Name="plus" />@T("إضافة مشروع", "Add project")</button>
+                <p class="mt"><strong>@T("إجمالي الاتفاقية:", "Agreement total:")</strong> <Money Value="_in.Total" /></p>
+            </div>
+            <div class="form-section">
+                <h3><Icon Name="calendar-days" />@T("جدول الدفعات", "Payment schedule")</h3>
+                <div class="row mb">
+                    <span class="muted" style="font-size:12px">@T("توليد سريع:", "Quick generate:")</span>
+                    <input class="input" type="number" min="1" max="60" style="width:80px" @bind="_genCount" />
+                    <span class="muted" style="font-size:12px">@T("دفعات شهرية من", "monthly installments from")</span>
+                    <input class="input" type="date" style="width:auto" @bind="_genStart" />
+                    <button class="secondary-btn btn-sm" @onclick="Generate">@T("توليد", "Generate")</button>
+                </div>
+                @foreach (var i in _in.Installments)
+                {
+                    <div class="form-grid three" style="align-items:end;margin-bottom:8px">
+                        <div class="field"><label>@T("تاريخ الاستحقاق", "Due date")</label><input type="date" @bind="i.DueDate" /></div>
+                        <div class="field"><label>@T("المبلغ", "Amount")</label><input type="number" step="0.01" @bind="i.Amount" dir="ltr" /></div>
+                        <div><button class="icon-btn" @onclick="() => _in.Installments.Remove(i)"><Icon Name="trash-2" /></button></div>
+                    </div>
+                }
+                <button class="text-action" @onclick="() => _in.Installments.Add(new InstallmentInput { DueDate = DateOnly.FromDateTime(QatarTime.Now) })"><Icon Name="plus" />@T("إضافة دفعة", "Add installment")</button>
+                @{ var diff = _in.Installments.Sum(x => x.Amount) - _in.Total; }
+                <div class="notice-box @(diff == 0 ? "ok" : "warn") mt"><Icon Name="@(diff == 0 ? "circle-check" : "triangle-alert")" />
+                    @T("مجموع الدفعات", "Installments total"): @Ui.Money(_in.Installments.Sum(x => x.Amount)) — @(diff == 0 ? T("مطابق للإجمالي", "matches the total") : T($"الفرق {Ui.Money(diff)}", $"difference {Ui.Money(diff)}"))</div>
+            </div>
+            <div class="form-section">
+                <h3><Icon Name="file-text" />@T("الشروط", "Terms")</h3>
+                <div class="form-grid">
+                    <div class="field"><label>@T("شروط الاتفاقية والقيود", "Terms & restrictions")</label><textarea @bind="_in.Terms"></textarea></div>
+                    <div class="field"><label>@T("التزامات التقارير للمتبرع", "Donor reporting commitments")</label><textarea @bind="_in.ReportingTerms"></textarea></div>
+                </div>
+                <div class="form-actions">
+                    <a class="secondary-btn" href="/collections/agreements">@T("إلغاء", "Cancel")</a>
+                    <button class="primary-btn" disabled="@Busy" @onclick="Save"><Icon Name="save" />@T("حفظ كمسودة", "Save draft")</button>
+                </div>
+            </div>
+        </section>
+    </PageState>
+</div>
+@code {
+    [Parameter] public int? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "donor")] public int? DonorQuery { get; set; }
+    private AgreementInput _in = new();
+    private Donor? _donor;
+    private List<ProjectCatalogEntry> _projects = [];
+    private int _genCount = 4;
+    private DateOnly _genStart = DateOnly.FromDateTime(QatarTime.Now).AddMonths(1);
+
+    protected override async Task LoadAsync()
+    {
+        _projects = await S<CatalogService>().EntriesAsync(true);
+        if (Id is int id)
+        {
+            var a = await S<AgreementService>().GetAsync(id);
+            _donor = a.Donor;
+            _in = new AgreementInput
+            {
+                Id = a.Id, DonorId = a.DonorId, RepresentativeId = a.RepresentativeId, Date = a.Date, Terms = a.Terms, ReportingTerms = a.ReportingTerms,
+                Lines = a.Lines.Select(l => new AgreementLineInput { ProjectId = l.ProjectId, Amount = l.Amount }).ToList(),
+                Installments = a.Installments.Select(i => new InstallmentInput { DueDate = i.DueDate, Amount = i.Amount }).ToList(),
+            };
+        }
+        else
+        {
+            if (_in.Lines.Count == 0) _in.Lines.Add(new AgreementLineInput());
+            if (DonorQuery is int did && _donor is null) { _donor = await S<DonorService>().GetAsync(did); _in.DonorId = did; }
+        }
+    }
+
+    private Task<List<Donor>> SearchDonors(string q) => S<DonorService>().SearchAsync(q, take: 8);
+
+    private async Task DonorChanged(Donor? d)
+    {
+        _donor = d is null ? null : await S<DonorService>().GetAsync(d.Id);
+        _in.DonorId = d?.Id ?? 0; _in.RepresentativeId = null;
+    }
+
+    private void Generate()
+    {
+        if (_genCount < 1 || _in.Total <= 0) return;
+        var each = Math.Floor(_in.Total / _genCount * 100) / 100;
+        _in.Installments = Enumerable.Range(0, _genCount).Select(i => new InstallmentInput { DueDate = _genStart.AddMonths(i), Amount = each }).ToList();
+        _in.Installments[^1].Amount += _in.Total - each * _genCount;
+    }
+
+    private async Task Save()
+    {
+        if (_in.DonorId == 0) { Toast.Show(T("اختر المتبرع.", "Select the donor."), "error"); return; }
+        var id = 0;
+        if (await Run(async () => id = await S<AgreementService>().SaveDraftAsync(_in), "تم حفظ المسودة", "Draft saved", reload: false))
+            Nav.NavigateTo($"/collections/agreements/{id}");
+    }
+}

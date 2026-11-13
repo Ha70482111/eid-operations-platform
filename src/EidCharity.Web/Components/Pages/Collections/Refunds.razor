@@ -1,0 +1,54 @@
+@page "/collections/refunds"
+@attribute [Authorize(Policy = Perm.RefundsRequest + "," + Perm.RefundsApprove + "," + Perm.RefundsExecute)]
+@inherits EidPage
+
+<PageTitle>@T("الاسترداد", "Refunds")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C24" Title="@T("طلبات الاسترداد", "Refund requests")" Subtitle="@T("الطلب ← الاعتماد (ضمن حدود الصلاحية، ولا يعتمد صاحب الطلب طلبه) ← التنفيذ بمرجع. يُرسل الأثر للمشروع كقيمة سالبة مرتبطة بالسند الأصلي.", "Request → approval (within limits; requesters can't approve their own) → execution with reference. Projects receive a negative effect linked to the original receipt.")" />
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("الطلب", "Request")</th><th>@T("العملية / المتبرع", "Transaction / donor")</th><th class="num">@T("المبلغ", "Amount")</th><th>@T("السبب", "Reason")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var r in _items)
+                {
+                    <tr>
+                        <td><strong dir="ltr">@r.Number</strong><span>@Ui.Date(r.CreatedAt) @(r.IsChargeback ? "· Chargeback" : "")</span></td>
+                        <td><a href="/collections/transactions/@r.DonationId"><strong dir="ltr">@r.Donation?.Number</strong></a><span>@r.Donation?.Donor?.DisplayName(Ui.IsAr)</span></td>
+                        <td class="num"><Money Value="r.Amount" /></td>
+                        <td>@r.Reason@if (r.DecisionNote is not null) { <span>@r.DecisionNote</span> }@if (r.ExecutionReference is not null) { <span dir="ltr">@r.ExecutionReference</span> }</td>
+                        <td><StatusPill Tone="StatusText.Of(r.Status)" /></td>
+                        <td class="actions">
+                            @if (r.Status is RequestStatus.Submitted or RequestStatus.UnderReview && Can(Perm.RefundsApprove)) { <button class="secondary-btn btn-sm" @onclick="() => OpenDecide(r)">@T("مراجعة", "Review")</button> }
+                            @if (r.Status == RequestStatus.Approved && Can(Perm.RefundsExecute)) { <button class="primary-btn btn-sm" @onclick="() => OpenExecute(r)">@T("تنفيذ", "Execute")</button> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal @bind-Open="_decideOpen" Title="@T("قرار الاسترداد", "Refund decision")">
+    <ChildContent>
+        @if (_impact is not null) { <div class="notice-box warn"><Icon Name="triangle-alert" />@_impact</div> }
+        <div class="field"><label>@T("ملاحظة القرار", "Decision note")</label><textarea @bind="_note"></textarea></div>
+    </ChildContent>
+    <Footer>
+        <button class="danger-text" disabled="@Busy" @onclick="() => Decide(false)">@T("رفض", "Reject")</button>
+        <button class="primary-btn" disabled="@Busy" @onclick="() => Decide(true)"><Icon Name="badge-check" />@T("اعتماد", "Approve")</button>
+    </Footer>
+</Modal>
+<Modal @bind-Open="_execOpen" Title="@T("تنفيذ الاسترداد", "Execute refund")">
+    <ChildContent><div class="field"><label class="req">@T("مرجع التنفيذ (تحويل/شيك/عكس عملية)", "Execution reference (transfer/cheque/reversal)")</label><input @bind="_note" dir="ltr" /></div></ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Execute">@T("تأكيد التنفيذ", "Confirm execution")</button></Footer>
+</Modal>
+@code {
+    private List<RefundRequest> _items = [];
+    private bool _decideOpen, _execOpen;
+    private int _id; private string _note = ""; private string? _impact;
+
+    protected override async Task LoadAsync() => _items = await S<AdjustmentService>().RefundsAsync();
+    private async Task OpenDecide(RefundRequest r) { _id = r.Id; _note = ""; _impact = await S<AdjustmentService>().RefundImpactAsync(r.Id); _decideOpen = true; }
+    private void OpenExecute(RefundRequest r) { _id = r.Id; _note = ""; _execOpen = true; }
+    private async Task Decide(bool approve) { if (await Run(() => S<AdjustmentService>().DecideRefundAsync(_id, approve, _note), approve ? "اعتُمد الطلب" : "رُفض الطلب", approve ? "Approved" : "Rejected")) _decideOpen = false; }
+    private async Task Execute() { if (await Run(() => S<AdjustmentService>().ExecuteRefundAsync(_id, _note), "نُفذ الاسترداد وأُرسل الأثر للمشروع", "Refund executed; project updated")) _execOpen = false; }
+}

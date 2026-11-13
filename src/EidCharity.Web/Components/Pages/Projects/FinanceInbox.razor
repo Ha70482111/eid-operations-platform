@@ -1,0 +1,49 @@
+@page "/projects/finance"
+@attribute [Authorize(Policy = Perm.FinanceReview)]
+@inherits EidPage
+
+<PageTitle>@T("صندوق مراجعة المالية", "Finance review inbox")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="P08" Title="@T("صندوق مراجعات المالية", "Finance review inbox")" Subtitle="@T("المشاريع المرسلة من المراكز للمراجعة والربط بالبند المالي والتراخيص واعتماد الإتاحة للتحصيل.", "Projects sent by centers for review, mapping to financial item and licenses, and eligibility approval.")" />
+    <div class="tabs">
+        @foreach (var (key, ar, en) in Tabs)
+        {
+            <button class="@(_tab == key ? "active" : "")" @onclick="() => SetTab(key)">@T(ar, en) <span class="count">@_counts.GetValueOrDefault(key)</span></button>
+        }
+    </div>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)" EmptyAr="لا توجد مشاريع في هذا التبويب" EmptyEn="No projects in this tab">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("المشروع", "Project")</th><th>@T("المركز / البرنامج", "Center / program")</th><th>@T("الحالة", "Status")</th><th>@T("الربط", "Sync")</th><th class="num">@T("سقف التحصيل", "Cap")</th><th>@T("آخر تحديث", "Last update")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in _items)
+                {
+                    <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/projects/finance/{p.Id}"))">
+                        <td><strong>@Ui.N(p.NameAr, p.NameEn)</strong><span dir="ltr">@p.Code @(p.HasPendingChanges ? T("· تغيير جوهري", "· substantive change") : "")</span></td>
+                        <td>@Ui.N(p.CenterAr, p.CenterEn) / @Ui.N(p.ProgramNameAr, p.ProgramNameEn)</td>
+                        <td><StatusPill Tone="StatusText.Of(p.Approval)" /></td>
+                        <td><StatusPill Tone="StatusText.Of(p.Sync)" /></td>
+                        <td class="num"><Money Value="p.CollectionCap" Currency="@p.Currency" /></td>
+                        <td>@Ui.Ago(p.UpdatedAt ?? p.CreatedAt)</td>
+                        <td class="actions"><Icon Name="ellipsis" /></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+@code {
+    private static readonly (string, string, string)[] Tabs =
+    [
+        ("pending", "بانتظار المراجعة", "Awaiting review"), ("returned", "معادة للمراكز", "Returned"), ("approved", "معتمدة", "Approved"),
+        ("sync", "متابعة الربط", "Sync follow-up"), ("suspended", "موقوفة / مرفوضة", "Suspended / rejected"),
+    ];
+    private string _tab = "pending";
+    private List<ProjectRow> _items = [];
+    private Dictionary<string, int> _counts = new();
+    protected override async Task LoadAsync()
+    {
+        _counts = await S<FinanceReviewService>().InboxCountsAsync();
+        _items = await S<FinanceReviewService>().InboxAsync(_tab);
+    }
+    private async Task SetTab(string t) { _tab = t; await Reload(); }
+}

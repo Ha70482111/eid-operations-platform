@@ -1,0 +1,42 @@
+@page "/collections/reallocations"
+@attribute [Authorize(Policy = Perm.ReallocationRequest + "," + Perm.ReallocationApprove)]
+@inherits EidPage
+
+<PageTitle>@T("إعادة التخصيص", "Reallocations")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C25" Title="@T("طلبات إعادة التخصيص", "Reallocation requests")" Subtitle="@T("نقل مبلغ مؤكد من مشروع لآخر بموافقة المتبرع واعتماد صاحب الصلاحية. يُخفض المشروع الأصلي ويُزاد الجديد بنفس القيمة.", "Move a confirmed amount between projects with donor consent and approval. The source decreases and the target increases by the same value.")">
+        <Actions><a class="secondary-btn" href="/collections/transactions"><Icon Name="receipt-text" />@T("إنشاء من عملية", "Create from a transaction")</a></Actions>
+    </PageHeader>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("الطلب", "Request")</th><th>@T("من", "From")</th><th>@T("إلى", "To")</th><th class="num">@T("المبلغ", "Amount")</th><th>@T("المبرر", "Justification")</th><th>@T("موافقة المتبرع", "Donor consent")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var r in _items)
+                {
+                    <tr>
+                        <td><strong dir="ltr">@r.Number</strong><span>@Ui.Date(r.CreatedAt)</span></td>
+                        <td>@Name(r.FromProjectId)</td><td>@Name(r.ToProjectId)</td>
+                        <td class="num"><Money Value="r.Amount" /></td>
+                        <td>@r.Justification@if (r.DecisionNote is not null) { <span>@r.DecisionNote</span> }</td>
+                        <td>@(r.DonorConsentObtained ? T("نعم", "Yes") : T("لا", "No"))</td>
+                        <td><StatusPill Tone="StatusText.Of(r.Status)" /></td>
+                        <td class="actions">@if (r.Status is RequestStatus.Submitted or RequestStatus.UnderReview && Can(Perm.ReallocationApprove)) {
+                            <button class="danger-text" disabled="@Busy" @onclick="() => Decide(r.Id, false)">@T("رفض", "Reject")</button>
+                            <button class="primary-btn btn-sm" disabled="@Busy" @onclick="() => Decide(r.Id, true)">@T("اعتماد", "Approve")</button> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+@code {
+    private List<ReallocationRequest> _items = [];
+    private Dictionary<int, ProjectCatalogEntry> _projects = new();
+    protected override async Task LoadAsync()
+    {
+        _items = await S<AdjustmentService>().ReallocationsAsync();
+        _projects = (await S<CatalogService>().EntriesAsync(false)).ToDictionary(e => e.ProjectId);
+    }
+    private string Name(int id) => _projects.TryGetValue(id, out var e) ? $"{e.ProjectCode} — {Ui.N(e.NameAr, e.NameEn)}" : $"#{id}";
+    private Task Decide(int id, bool approve) => Run(() => S<AdjustmentService>().DecideReallocationAsync(id, approve, null), approve ? "اعتُمدت إعادة التخصيص" : "رُفض الطلب", approve ? "Reallocation approved" : "Rejected");
+}

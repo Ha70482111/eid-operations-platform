@@ -1,0 +1,121 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = Perm.AdminUsers)]
+@inherits EidPage
+
+<PageTitle>@T("المستخدمون", "Users")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="A1" Title="@T("المستخدمون", "Users")" Subtitle="@T("حسابات الموظفين وأدوارهم ومراكزهم. تغيير الدور يُطبَّق خلال دقيقة على الجلسات المفتوحة.", "Staff accounts, roles and centers. Role changes apply to open sessions within a minute.")">
+        <Actions><button class="primary-btn" @onclick="New"><Icon Name="plus" />@T("مستخدم جديد", "New user")</button></Actions>
+    </PageHeader>
+
+    <section class="data-card">
+        <div class="toolbar">
+            <div class="search-field"><Icon Name="search" /><input @bind="_search" @bind:event="oninput" @onkeyup="SearchKey" placeholder="@T("اسم المستخدم أو الاسم أو البريد ثم Enter", "Username, name or email, then Enter")" /></div>
+        </div>
+        <PageState Loading="Loading" Error="@Error" Empty="@(_rows.Count == 0)">
+            <div class="table-wrap"><table>
+                <thead><tr><th>@T("المستخدم", "User")</th><th>@T("المركز", "Center")</th><th>@T("الأدوار", "Roles")</th><th>@T("آخر دخول", "Last sign-in")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var u in _rows)
+                    {
+                        <tr>
+                            <td><strong>@Ui.N(u.FullNameAr, u.FullNameEn)</strong><small dir="ltr">@u.UserName</small></td>
+                            <td>@(u.CenterAr ?? T("كل المراكز / الإدارة", "HQ / all centers"))</td>
+                            <td><div class="chips">@foreach (var r in u.Roles) { <span class="chip">@RoleName(r)</span> }</div></td>
+                            <td dir="ltr">@Ui.DateTimeStr(u.LastLoginAt)</td>
+                            <td>
+                                @if (!u.IsActive) { <StatusPill Css="neutral">@T("معطل", "Disabled")</StatusPill> }
+                                else if (u.IsLocked) { <StatusPill Css="danger">@T("مقفل مؤقتًا", "Locked out")</StatusPill> }
+                                else { <StatusPill Css="success">@T("نشط", "Active")</StatusPill> }
+                            </td>
+                            <td class="actions">
+                                @if (u.IsActive && u.IsLocked) { <button class="secondary-btn btn-sm" disabled="@Busy" @onclick="() => Unlock(u.Id)"><Icon Name="lock-open" />@T("فك القفل", "Unlock")</button> }
+                                <button class="icon-btn sm" title="@T("تعديل", "Edit")" @onclick="() => Edit(u)"><Icon Name="pencil-line" /></button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </PageState>
+    </section>
+</div>
+
+<Modal @bind-Open="_open" Title="@(_i.Id is null ? T("مستخدم جديد", "New user") : T("تعديل مستخدم", "Edit user"))" Wide="true">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field"><label class="req">@T("اسم المستخدم", "Username")</label><input @bind="_i.UserName" dir="ltr" autocomplete="off" /></div>
+            <div class="field"><label>@T("البريد الإلكتروني", "Email")</label><input @bind="_i.Email" dir="ltr" type="email" /></div>
+            <div class="field"><label class="req">@T("الاسم بالعربية", "Name (Arabic)")</label><input @bind="_i.FullNameAr" /></div>
+            <div class="field"><label>@T("الاسم بالإنجليزية", "Name (English)")</label><input @bind="_i.FullNameEn" dir="ltr" /></div>
+            <div class="field"><label>@T("المسمى الوظيفي", "Job title")</label><input @bind="_i.JobTitle" /></div>
+            <div class="field"><label>@T("المركز", "Center")</label>
+                <select @bind="_centerId">
+                    <option value="">@T("— الإدارة العامة / كل المراكز —", "— Head office / all centers —")</option>
+                    @foreach (var c in _centers) { <option value="@c.Id">@Ui.Name(c)</option> }
+                </select>
+            </div>
+            <div class="field"><label class="@(_i.Id is null ? "req" : "")">@(_i.Id is null ? T("كلمة المرور الأولية", "Initial password") : T("كلمة مرور جديدة (اختياري)", "New password (optional)"))</label>
+                <input @bind="_i.NewPassword" type="password" dir="ltr" autocomplete="new-password" />
+                <small>@T("8 أحرف على الأقل مع رمز وحرف كبير وصغير ورقم.", "At least 8 characters with a symbol, upper, lower case and a digit.")</small>
+            </div>
+            <label class="check"><input type="checkbox" @bind="_i.IsActive" />@T("الحساب نشط", "Account active")</label>
+        </div>
+        <div class="form-section">
+            <h3>@T("الأدوار", "Roles")</h3>
+            <div class="form-grid">
+                @foreach (var r in _roles)
+                {
+                    var key = r.Key;
+                    <label class="check"><input type="checkbox" checked="@_i.Roles.Contains(key)" @onchange="e => ToggleRole(key, e)" />@Ui.N(r.NameAr, r.NameEn)</label>
+                }
+            </div>
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Save">@T("حفظ", "Save")</button></Footer>
+</Modal>
+
+@code {
+    private List<UserRow> _rows = [];
+    private List<Center> _centers = [];
+    private List<AdminService.LookupItem> _roles = [];
+    private string? _search;
+    private UserInput _i = new();
+    private string _centerId = "";
+    private bool _open;
+
+    protected override async Task LoadAsync()
+    {
+        var admin = S<AdminService>();
+        _rows = await admin.UsersAsync(_search);
+        if (_centers.Count == 0) _centers = await admin.CentersAsync();
+        if (_roles.Count == 0) _roles = await admin.RoleLookupAsync();
+    }
+
+    private string RoleName(string key) => _roles.FirstOrDefault(r => r.Key == key) is { } r ? Ui.N(r.NameAr, r.NameEn) : key;
+
+    private async Task SearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Reload(); }
+
+    private void New() { _i = new UserInput(); _centerId = ""; _open = true; }
+
+    private void Edit(UserRow u)
+    {
+        _i = new UserInput { Id = u.Id, UserName = u.UserName, Email = u.Email, FullNameAr = u.FullNameAr, FullNameEn = u.FullNameEn, JobTitle = u.JobTitle,
+            CenterId = u.CenterId, IsActive = u.IsActive, Roles = u.Roles.ToList() };
+        _centerId = u.CenterId?.ToString() ?? "";
+        _open = true;
+    }
+
+    private void ToggleRole(string key, ChangeEventArgs e)
+    {
+        if (e.Value is true) { if (!_i.Roles.Contains(key)) _i.Roles.Add(key); }
+        else _i.Roles.Remove(key);
+    }
+
+    private async Task Save()
+    {
+        _i.CenterId = int.TryParse(_centerId, out var c) ? c : null;
+        if (await Run(() => S<AdminService>().SaveUserAsync(_i), "تم حفظ المستخدم", "User saved")) { _open = false; _i.NewPassword = null; }
+    }
+
+    private Task Unlock(string id) => Run(() => S<AdminService>().UnlockAsync(id), "تم فك القفل", "Unlocked");
+}

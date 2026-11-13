@@ -1,0 +1,170 @@
+@page "/collections/transactions/{Id:int}"
+@inherits EidPage
+
+<PageTitle>@T("تفاصيل العملية", "Transaction") @_d?.Number</PageTitle>
+<div class="page">
+    <PageState Loading="Loading" Error="@Error">
+        @if (_d is not null)
+        {
+            <PageHeader Eyebrow="@_d.Number" Title="@T("تفاصيل العملية", "Transaction details")" Subtitle="@(_d.Donor?.DisplayName(Ui.IsAr))">
+                <Actions>
+                    <StatusPill Tone="StatusText.Of(_d.Status)" />
+                    @if (_d.Receipt is not null) { <a class="secondary-btn" href="/collections/receipts/@_d.Receipt.Id"><Icon Name="printer" />@T("السند", "Receipt") @_d.Receipt.Number</a> }
+                    @if (_d.RefundableAmount > 0 && Can(Perm.RefundsRequest)) { <button class="secondary-btn" @onclick="() => _refundOpen = true"><Icon Name="undo-2" />@T("طلب استرداد", "Request refund")</button> }
+                    @if (_d.Receipt is not null && !_d.Receipt.IsCancelled && Can(Perm.ReceiptsCorrect)) { <button class="secondary-btn" @onclick="() => _corrOpen = true"><Icon Name="pencil-line" />@T("طلب تصحيح السند", "Request receipt correction")</button> }
+                </Actions>
+            </PageHeader>
+            @if (_d.Status == DonationStatus.PendingVerification)
+            {
+                <div class="notice-box warn"><Icon Name="clock-3" />@T("العملية قيد التحقق: لم يصدر سند بعد، والمبلغ محجوز من السقف مؤقتًا.", "Pending verification: no receipt yet; the amount is held against the cap.")
+                    @if (Can(Perm.DonationsVerify)) { <a class="link-btn" href="/collections/pending">@T("الذهاب للتحقق", "Go to verification")</a> }
+                </div>
+            }
+            @if (_d.Status == DonationStatus.Failed)
+            {
+                <div class="notice-box danger"><Icon Name="circle-x" />@T("عملية غير ناجحة:", "Unsuccessful:") @_d.FailureReason</div>
+            }
+            <section class="data-card">
+                <div class="kv">
+                    <div><span>@T("المتبرع", "Donor")</span><strong>@(_d.Donor?.DisplayName(Ui.IsAr))</strong></div>
+                    <div><span>@T("الإجمالي", "Total")</span><strong><Money Value="_d.Total" Currency="@_d.Currency" /></strong></div>
+                    <div><span>@T("المسترد", "Refunded")</span><strong><Money Value="_d.RefundedAmount" /></strong></div>
+                    <div><span>@T("الصافي", "Net")</span><strong><Money Value="_d.NetAmount" /></strong></div>
+                    <div><span>@T("طريقة الدفع", "Method")</span><strong>@T(StatusText.Of(_d.PaymentMethod).Ar, StatusText.Of(_d.PaymentMethod).En)</strong></div>
+                    <div><span>@T("مرجع الدفع", "Payment reference")</span><strong dir="ltr">@(_d.PaymentReference ?? "—")</strong></div>
+                    @if (_d.BankName is not null) { <div><span>@T("البنك / تاريخ التحويل", "Bank / transfer date")</span><strong>@_d.BankName · @Ui.Date(_d.TransferDate)</strong></div> }
+                    @if (_d.PosTerminal is not null) { <div><span>@T("الجهاز / النتيجة", "Terminal / result")</span><strong dir="ltr">@_d.PosTerminal · @_d.PosResult</strong></div> }
+                    @if (_d.ChannelFee > 0) { <div><span>@T("رسوم القناة", "Channel fee")</span><strong><Money Value="_d.ChannelFee" /></strong></div> }
+                    <div><span>@T("المحصّل", "Collector")</span><strong>@_d.CollectorName</strong></div>
+                    <div><span>@T("نقطة التحصيل", "Collection point")</span><strong>@(string.IsNullOrEmpty(_d.CollectionPoint) ? "—" : _d.CollectionPoint)</strong></div>
+                    <div><span>@T("وقت العملية", "Occurred")</span><strong dir="ltr">@Ui.DateTimeStr(_d.OccurredAt)</strong></div>
+                    <div><span>@T("وقت التأكيد", "Confirmed")</span><strong dir="ltr">@Ui.DateTimeStr(_d.ConfirmedAt)</strong></div>
+                    <div><span>@T("التسوية", "Settlement")</span><strong>@_d.Settlement</strong></div>
+                </div>
+            </section>
+            <section class="data-card">
+                <div class="card-head"><div><h2>@T("بنود التخصيص", "Allocation lines")</h2><p>@T("كل بند مرتبط بالمشروع والبند المالي والترخيص ونسخة الربط وقت العملية", "Each line keeps the project, financial item, license and mapping version at the time")</p></div></div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>@T("المشروع", "Project")</th><th>@T("البند المالي", "Item")</th><th>@T("الترخيص", "License")</th><th>@T("نسخة الربط", "Mapping v.")</th><th class="num">@T("المبلغ", "Amount")</th><th class="num">@T("مسترد", "Refunded")</th><th class="num">@T("أعيد تخصيصه", "Reallocated")</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var l in _d.Lines)
+                            {
+                                var avail = l.Amount - l.RefundedAmount - l.ReallocatedAmount;
+                                <tr>
+                                    <td><strong>@Ui.N(l.ProjectNameAr, l.ProjectNameEn)</strong><span dir="ltr">@l.ProjectCode</span></td>
+                                    <td dir="ltr">@l.FinancialItemNumber</td><td dir="ltr">@l.LicenseNumber</td><td>v@(l.MappingVersion)</td>
+                                    <td class="num"><Money Value="l.Amount" ShowCurrency="false" /></td>
+                                    <td class="num"><Money Value="l.RefundedAmount" ShowCurrency="false" /></td>
+                                    <td class="num"><Money Value="l.ReallocatedAmount" ShowCurrency="false" /></td>
+                                    <td class="actions">
+                                        @if (avail > 0 && _d.Status is DonationStatus.Confirmed or DonationStatus.PartiallyRefunded && Can(Perm.ReallocationRequest))
+                                        {
+                                            <button class="secondary-btn btn-sm" @onclick="() => OpenRealloc(l, avail)"><Icon Name="arrow-left-right" />@T("إعادة تخصيص", "Reallocate")</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            @if (!string.IsNullOrEmpty(_d.Notes)) { <div class="card card-pad mt"><strong>@T("ملاحظات", "Notes")</strong><p class="muted">@_d.Notes</p></div> }
+        }
+    </PageState>
+</div>
+
+<Modal @bind-Open="_refundOpen" Title="@T("طلب استرداد", "Refund request")">
+    <ChildContent>
+        <div class="notice-box"><Icon Name="info" />@T($"الحد الأقصى القابل للاسترداد: {Ui.Money(_d?.RefundableAmount ?? 0)} ر.ق. لا يُنفذ الاسترداد إلا بعد اعتماد صاحب الصلاحية.", $"Maximum refundable: QAR {Ui.Money(_d?.RefundableAmount ?? 0)}. Executed only after approval.")</div>
+        <div class="form-grid">
+            <div class="field"><label class="req">@T("المبلغ", "Amount")</label><input type="number" step="0.01" min="0" @bind="_refundAmount" dir="ltr" /></div>
+            <div class="field" style="justify-content:flex-end"><label class="check"><input type="checkbox" @bind="_chargeback" />@T("استرجاع من البنك (Chargeback)", "Bank chargeback")</label></div>
+            <div class="field full"><label class="req">@T("السبب", "Reason")</label><textarea @bind="_reason"></textarea></div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="secondary-btn" @onclick="() => _refundOpen = false">@T("إلغاء", "Cancel")</button>
+        <button class="primary-btn" disabled="@Busy" @onclick="RequestRefund">@T("إرسال الطلب", "Submit request")</button>
+    </Footer>
+</Modal>
+
+<Modal @bind-Open="_reallocOpen" Title="@T("طلب إعادة تخصيص", "Reallocation request")">
+    <ChildContent>
+        <div class="notice-box"><Icon Name="info" />@T("يتحقق النظام من أهلية المشروع الجديد وسقفه عند الاعتماد، ويُرسل الأثر للمشروعين.", "The new project's eligibility and cap are checked at approval; both projects are updated.")</div>
+        <div class="form-grid">
+            <div class="field full"><label class="req">@T("المشروع الجديد", "New project")</label>
+                <select @bind="_toProject">
+                    <option value="0">—</option>
+                    @foreach (var c in _targets) { <option value="@c.Entry.ProjectId">@c.Entry.ProjectCode — @Ui.N(c.Entry.NameAr, c.Entry.NameEn) (@T("متبقٍ", "remaining") @Ui.Money(c.RemainingCap))</option> }
+                </select>
+            </div>
+            <div class="field"><label class="req">@T("المبلغ", "Amount")</label><input type="number" step="0.01" @bind="_reallocAmount" dir="ltr" /><span class="hint">@T("المتاح", "Available"): @Ui.Money(_reallocMax)</span></div>
+            <div class="field" style="justify-content:flex-end"><label class="check"><input type="checkbox" @bind="_consent" />@T("تم الحصول على موافقة المتبرع", "Donor consent obtained")</label></div>
+            <div class="field full"><label class="req">@T("المبرر", "Justification")</label><textarea @bind="_reason"></textarea></div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="secondary-btn" @onclick="() => _reallocOpen = false">@T("إلغاء", "Cancel")</button>
+        <button class="primary-btn" disabled="@Busy" @onclick="RequestRealloc">@T("إرسال الطلب", "Submit request")</button>
+    </Footer>
+</Modal>
+
+<Modal @bind-Open="_corrOpen" Title="@T("طلب تصحيح أو إلغاء السند", "Receipt correction / cancellation")">
+    <ChildContent>
+        <div class="notice-box warn"><Icon Name="triangle-alert" />@T("لا يُعدل السند الأصلي ولا يُحذف. يصدر سند بديل أو يُلغى بعد الاعتماد، ويبقى الأصل في السجل.", "The original receipt is never edited or deleted. A replacement is issued or it is cancelled after approval; the original stays on record.")</div>
+        <div class="form-grid">
+            <div class="field"><label>@T("النوع", "Type")</label>
+                <select @bind="_corrType"><option value="@CorrectionType.Correct">@T("تصحيح بيانات (سند بديل)", "Correct data (replacement)")</option><option value="@CorrectionType.Cancel">@T("إلغاء السند", "Cancel receipt")</option></select></div>
+            <div class="field full"><label class="req">@T("السبب", "Reason")</label><textarea @bind="_reason"></textarea></div>
+            <div class="field full"><label>@T("البيانات الصحيحة (إن وجدت)", "Correct data (if any)")</label><input @bind="_corrNote" /></div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="secondary-btn" @onclick="() => _corrOpen = false">@T("إلغاء", "Cancel")</button>
+        <button class="primary-btn" disabled="@Busy" @onclick="RequestCorrection">@T("إرسال الطلب", "Submit request")</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Donation? _d;
+    private bool _refundOpen, _reallocOpen, _corrOpen, _chargeback, _consent;
+    private decimal _refundAmount, _reallocAmount, _reallocMax;
+    private string _reason = "", _corrNote = "";
+    private int _lineId, _toProject;
+    private CorrectionType _corrType = CorrectionType.Correct;
+    private List<ProjectCard> _targets = [];
+
+    protected override async Task LoadAsync()
+    {
+        _d = await S<DonationService>().GetAsync(Id);
+        _refundAmount = _d.RefundableAmount;
+    }
+
+    private async Task OpenRealloc(DonationLine l, decimal avail)
+    {
+        _lineId = l.Id; _reallocMax = avail; _reallocAmount = avail; _toProject = 0; _reason = ""; _consent = false;
+        if (Can(Perm.CollectUse)) _targets = (await S<CatalogService>().CardsAsync(null, null, null, false)).Where(c => c.Eligible && c.Entry.ProjectId != l.ProjectId).ToList();
+        _reallocOpen = true;
+    }
+
+    private async Task RequestRefund()
+    {
+        if (await Run(() => S<AdjustmentService>().RequestRefundAsync(Id, _refundAmount, _reason, _chargeback), "أُرسل طلب الاسترداد للاعتماد", "Refund request sent for approval"))
+        { _refundOpen = false; _reason = ""; }
+    }
+
+    private async Task RequestRealloc()
+    {
+        if (await Run(() => S<AdjustmentService>().RequestReallocationAsync(_lineId, _toProject, _reallocAmount, _reason, _consent), "أُرسل طلب إعادة التخصيص", "Reallocation request sent"))
+        { _reallocOpen = false; _reason = ""; }
+    }
+
+    private async Task RequestCorrection()
+    {
+        if (_d?.Receipt is null) return;
+        if (await Run(() => S<AdjustmentService>().RequestCorrectionAsync(_d.Receipt.Id, _corrType, _reason, _corrNote), "أُرسل طلب التصحيح للاعتماد", "Correction request sent for approval"))
+        { _corrOpen = false; _reason = ""; }
+    }
+}

@@ -1,0 +1,79 @@
+@page "/projects"
+@attribute [Authorize(Policy = Perm.ProjectsView)]
+@inherits EidPage
+
+<PageTitle>@T("المشاريع الداخلية", "Internal projects")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="P01" Title="@T("المشاريع الداخلية", "Internal projects")" Subtitle="@T("إدارة دورة المشروع من التسجيل وحتى الإقفال، بحدود مسؤولية واضحة.", "Manage the project lifecycle from registration to closure with clear responsibilities.")">
+        <Actions>
+            @if (Can(Perm.ProgramsManage)) { <a class="secondary-btn" href="/projects/programs?new=1"><Icon Name="folder-kanban" />@T("برنامج جديد", "New program")</a> }
+            @if (Can(Perm.ProjectsCreateLicensed)) { <a class="primary-btn" href="/projects/new"><Icon Name="plus" />@T("مشروع جديد", "New project")</a> }
+        </Actions>
+    </PageHeader>
+    <div class="scope-bar">
+        <Icon Name="building-2" />
+        <div><span>@T("النطاق الحالي", "Current scope")</span><strong>@(Can(Perm.ScopeAllCenters) ? T("المؤسسة — جميع المراكز", "Organization — all centers") : T("مركزك فقط", "Your center only"))</strong></div>
+    </div>
+    <PageState Loading="Loading" Error="@Error">
+        @if (_d is not null)
+        {
+            <section class="metric-strip project-metrics">
+                <Metric Label="@T("مشاريع نشطة", "Active projects")" Value="@_d.ActiveProjects.ToString()" Currency="false" Note="@T($"ضمن {_d.ActivePrograms} برنامجًا", $"across {_d.ActivePrograms} programs")" IconName="folder-kanban" />
+                <Metric Label="@T("بانتظار المالية", "Awaiting finance")" Value="@_d.AwaitingFinance.ToString()" Currency="false" Note="@T($"{_d.Returned} أُعيدت للتعديل", $"{_d.Returned} returned")" IconName="clock-3" Warn="true" />
+                <Metric Label="@T("المحجوز للصرف", "Reserved")" Value="@Ui.Money(_d.Reserved)" Note="@T($"المنفذ {Ui.Money(_d.Executed)}", $"Executed {Ui.Money(_d.Executed)}")" IconName="wallet-cards" />
+                <Metric Label="@T("صافي التحصيل المؤكد", "Confirmed net collections")" Value="@Ui.Money(_d.ConfirmedNet)" Note="@T($"{_d.LicensesExpiring} تراخيص تنتهي قريبًا · {_d.SyncFailures} فشل ربط", $"{_d.LicensesExpiring} licenses expiring · {_d.SyncFailures} sync failures")" IconName="badge-check" Warn="@(_d.SyncFailures > 0)" />
+            </section>
+            <div class="project-workspace-grid">
+                <section class="data-card">
+                    <div class="card-head">
+                        <div><h2>@T("تحتاج متابعة", "Needs attention")</h2><p>@T("مشاريع بانتظار المالية أو معادة أو فشل ربطها", "Projects awaiting finance, returned, or with sync failures")</p></div>
+                        @if (Can(Perm.FinanceReview)) { <a href="/projects/finance">@T("عرض الكل", "View all")</a> }
+                    </div>
+                    @if (_d.Inbox.Count == 0) { <div class="empty-hint">@T("لا يوجد ما يحتاج متابعة الآن", "Nothing needs attention right now")</div> }
+                    <div class="table-wrap"><table>
+                        @if (_d.Inbox.Count > 0) { <thead><tr><th>@T("المشروع", "Project")</th><th>@T("المركز / البرنامج", "Center / program")</th><th>@T("الحالة", "Status")</th><th>@T("آخر تحديث", "Last update")</th></tr></thead> }
+                        <tbody>
+                            @foreach (var p in _d.Inbox)
+                            {
+                                <tr class="clickable" @onclick="@(() => Nav.NavigateTo(Can(Perm.FinanceReview) && p.Approval is ApprovalStatus.AwaitingFinance or ApprovalStatus.UnderFinanceReview ? $"/projects/finance/{p.Id}" : $"/projects/{p.Id}"))">
+                                    <td><strong>@Ui.N(p.NameAr, p.NameEn)</strong><span dir="ltr">@p.Code</span></td>
+                                    <td>@Ui.N(p.CenterAr, p.CenterEn) / @Ui.N(p.ProgramNameAr, p.ProgramNameEn)</td>
+                                    <td>@if (p.Sync == SyncStatus.Failed) { <StatusPill Tone="StatusText.Of(p.Sync)" /> } else { <StatusPill Tone="StatusText.Of(p.Approval)" /> }</td>
+                                    <td>@Ui.Ago(p.UpdatedAt ?? p.CreatedAt)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table></div>
+                </section>
+                <aside class="data-card license-card">
+                    <div class="card-head"><div><h2>@T("تنبيهات التراخيص", "License alerts")</h2><p>@T("تتطلب إجراءً قريبًا", "Action needed soon")</p></div></div>
+                    @if (_d.LicenseAlerts.Count == 0) { <div class="empty-hint">@T("لا تراخيص تنتهي قريبًا", "No licenses expiring soon")</div> }
+                    @foreach (var l in _d.LicenseAlerts)
+                    {
+                        var tone = l.DaysToExpiry <= 15 ? "danger" : l.DaysToExpiry <= 30 ? "warning" : "neutral";
+                        <div class="license-row">
+                            <div class="file-icon @tone"><Icon Name="file-text" /></div>
+                            <div><strong dir="ltr">@l.License.Number</strong><span>@l.License.Purposes · @l.Usage.UsedPercent%</span></div>
+                            <b>@T($"{l.DaysToExpiry} يومًا", $"{l.DaysToExpiry} days")</b>
+                        </div>
+                    }
+                    @if (Can(Perm.LicensesView)) { <a class="full-link" href="/projects/licenses">@T("إدارة جميع التراخيص", "Manage all licenses")<Icon Name="@(Ui.IsAr ? "arrow-left" : "arrow-right")" /></a> }
+                </aside>
+            </div>
+            <section class="workflow-card">
+                <div class="card-head"><div><span class="eyebrow">@T("مسار العمليات", "Operations path")</span><h2>@T("دورة حياة المشروع", "Project lifecycle")</h2><p>@T("كل مرحلة بصلاحية مستقلة وسجل إجراءات", "Each stage has its own permission and audit trail")</p></div></div>
+                <div class="path">
+                    @foreach (var (ar, en, i) in new[] { ("تسجيل المركز", "Center registration", 0), ("إرسال للمالية", "Submit to finance", 1), ("مراجعة واكتمال", "Review & completeness", 2), ("ربط البند والتراخيص", "Item & license mapping", 3), ("اعتماد الإتاحة", "Approve eligibility", 4), ("التحصيل", "Collections", 5), ("الصرف والتنفيذ", "Disbursement & execution", 6), ("الإقفال", "Closure", 7) })
+                    {
+                        if (i > 0) { <span class="p-sep"></span> }
+                        <span class="p-step done"><i>@(i + 1)</i>@T(ar, en)</span>
+                    }
+                </div>
+            </section>
+        }
+    </PageState>
+</div>
+@code {
+    private ProjectsDashboard? _d;
+    protected override async Task LoadAsync() => _d = await S<ProjectsDashboardService>().GetAsync();
+}

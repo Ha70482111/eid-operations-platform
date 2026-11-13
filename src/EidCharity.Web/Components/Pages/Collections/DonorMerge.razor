@@ -1,0 +1,29 @@
+@page "/collections/donors/merge"
+@attribute [Authorize(Policy = Perm.DonorsMerge)]
+@inherits EidPage
+
+<PageTitle>@T("دمج سجلات المتبرعين", "Merge donor records")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C09" Title="@T("دمج سجلات المتبرعين", "Merge donor records")" Subtitle="@T("تنتقل العمليات والتعهدات والاتفاقيات والعيني إلى السجل الأساسي، ويبقى السجل المدمج للتاريخ مع إشارة إليه.", "Transactions, pledges, agreements and in-kind move to the primary record; the merged record stays for history.")" />
+    <section class="form-card">
+        <div class="form-grid">
+            <DonorPicker Label="@T("السجل المكرر (سيُدمج)", "Duplicate record (to merge)")" Required="true" Search="SearchDonors" @bind-Selected="_source" />
+            <DonorPicker Label="@T("السجل الأساسي (يبقى)", "Primary record (kept)")" Required="true" Search="SearchDonors" @bind-Selected="_target" />
+            <div class="field full"><label class="req">@T("سبب الدمج", "Merge reason")</label><textarea @bind="_reason"></textarea></div>
+        </div>
+        <div class="notice-box warn mt"><Icon Name="triangle-alert" />@T("الدمج لا يُلغى تلقائيًا ويُسجل في سجل الإجراءات. تأكد أن السجلين لنفس الشخص أو الجهة.", "Merging is logged and not automatically reversible. Make sure both records are the same person or organization.")</div>
+        <div class="form-actions">
+            <button class="danger-btn" disabled="@(Busy || _source is null || _target is null)" @onclick="Merge"><Icon Name="git-merge" />@T("دمج السجلين", "Merge records")</button>
+        </div>
+    </section>
+</div>
+@code {
+    private Donor? _source, _target;
+    private string _reason = "";
+    private Task<List<Donor>> SearchDonors(string q) => S<DonorService>().SearchAsync(q, take: 8);
+    private async Task Merge()
+    {
+        if (await Run(() => S<DonorService>().MergeAsync(_source!.Id, _target!.Id, _reason), "تم دمج السجلين", "Records merged", reload: false))
+            Nav.NavigateTo($"/collections/donors/{_target!.Id}");
+    }
+}

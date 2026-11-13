@@ -1,0 +1,20 @@
+@inject Ui Ui
+@inject NavigationManager Nav
+<div class="table-wrap"><table>
+    <thead><tr><th>@Ui.T("الطلب", "Request")</th><th>@Ui.T("المشروع", "Project")</th><th>@Ui.T("المستفيد", "Payee")</th><th class="num">@Ui.T("المبلغ", "Amount")</th><th class="num">@Ui.T("المحجوز", "Reserved")</th><th class="num">@Ui.T("المنفذ", "Executed")</th><th>@Ui.T("الحالة", "Status")</th></tr></thead>
+    <tbody>
+        @foreach (var d in Items)
+        {
+            <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/projects/disbursements/{d.Id}"))">
+                <td><strong dir="ltr">@d.Number</strong><span>@Ui.Date(d.CreatedAt) @(d.IsAdvance ? Ui.T("· سلفة", "· advance") : "")</span></td>
+                <td>@Ui.N(d.ProjectNameAr, d.ProjectNameEn)<span dir="ltr">@d.ProjectCode</span></td>
+                <td>@d.PayeeName</td>
+                <td class="num"><Money Value="d.Amount" Currency="@d.Currency" /></td>
+                <td class="num"><Money Value="d.Reserved" ShowCurrency="false" /></td>
+                <td class="num"><Money Value="d.Executed" ShowCurrency="false" /></td>
+                <td><StatusPill Tone="StatusText.Of(d.Status)" /></td>
+            </tr>
+        }
+    </tbody>
+</table></div>
+@code { [Parameter] public List<DisbursementRow> Items { get; set; } = []; }

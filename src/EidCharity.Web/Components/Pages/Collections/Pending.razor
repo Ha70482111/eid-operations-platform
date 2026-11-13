@@ -1,0 +1,66 @@
+@page "/collections/pending"
+@attribute [Authorize(Policy = Perm.DonationsVerify)]
+@inherits EidPage
+
+<PageTitle>@T("قيد التحقق", "Pending verification")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C14" Title="@T("العمليات قيد التحقق", "Pending verification")"
+                Subtitle="@T("التحويلات البنكية والعمليات الإلكترونية المعلقة. لا يصدر السند إلا بعد التأكد من وصول المبلغ فعليًا.", "Bank transfers and pending online payments. A receipt is issued only after the money actually arrives.")" />
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)" EmptyAr="لا توجد عمليات بانتظار التحقق" EmptyEn="Nothing waiting for verification">
+        <section class="data-card">
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>@T("العملية", "Transaction")</th><th>@T("المتبرع", "Donor")</th><th>@T("الطريقة / المرجع", "Method / reference")</th><th>@T("البنك / التاريخ", "Bank / date")</th><th class="num">@T("المبلغ", "Amount")</th><th>@T("منذ", "Age")</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var d in _items)
+                        {
+                            <tr>
+                                <td><a href="/collections/transactions/@d.Id"><strong dir="ltr">@d.Number</strong></a><span>@d.CollectorName</span></td>
+                                <td>@(d.Donor?.DisplayName(Ui.IsAr))</td>
+                                <td>@T(StatusText.Of(d.PaymentMethod).Ar, StatusText.Of(d.PaymentMethod).En)<span dir="ltr">@d.PaymentReference</span></td>
+                                <td>@d.BankName<span>@Ui.Date(d.TransferDate)</span></td>
+                                <td class="num"><Money Value="d.Total" Currency="@d.Currency" /></td>
+                                <td>@Ui.Ago(d.OccurredAt)</td>
+                                <td class="actions">
+                                    <button class="primary-btn btn-sm" disabled="@Busy" @onclick="() => Verify(d, true)"><Icon Name="circle-check" />@T("تأكيد الوصول", "Confirm arrival")</button>
+                                    <button class="secondary-btn btn-sm" disabled="@Busy" @onclick="() => OpenReject(d)">@T("لم يصل", "Not received")</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </PageState>
+</div>
+
+<Modal @bind-Open="_rejectOpen" Title="@T("تسجيل عدم وصول المبلغ", "Record non-arrival")">
+    <ChildContent>
+        <div class="field"><label class="req">@T("السبب", "Reason")</label><textarea @bind="_note"></textarea></div>
+    </ChildContent>
+    <Footer>
+        <button class="secondary-btn" @onclick="() => _rejectOpen = false">@T("إلغاء", "Cancel")</button>
+        <button class="danger-btn" disabled="@Busy" @onclick="() => Verify(_target!, false)">@T("تأكيد عدم الوصول", "Confirm not received")</button>
+    </Footer>
+</Modal>
+
+@code {
+    private List<Donation> _items = [];
+    private bool _rejectOpen;
+    private string _note = "";
+    private Donation? _target;
+
+    protected override async Task LoadAsync() => _items = await S<DonationService>().PendingAsync();
+
+    private void OpenReject(Donation d) { _target = d; _note = ""; _rejectOpen = true; }
+
+    private async Task Verify(Donation d, bool received)
+    {
+        DonationResult? r = null;
+        if (await Run(async () => r = await S<DonationService>().VerifyAsync(d.Id, received, received ? null : _note)))
+        {
+            _rejectOpen = false;
+            Toast.Show(received ? T($"تم التأكيد وإصدار السند {r?.ReceiptNumber}", $"Confirmed; receipt {r?.ReceiptNumber} issued") : T("سُجلت العملية كغير ناجحة وحُرر الحجز من السقف", "Marked unsuccessful; cap hold released"));
+        }
+    }
+}

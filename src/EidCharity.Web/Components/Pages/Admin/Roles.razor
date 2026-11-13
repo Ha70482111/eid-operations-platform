@@ -1,0 +1,157 @@
+@page "/admin/roles"
+@attribute [Authorize(Policy = Perm.AdminRoles)]
+@inherits EidPage
+
+<PageTitle>@T("الأدوار والصلاحيات", "Roles & permissions")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="A2" Title="@T("الأدوار والصلاحيات", "Roles & permissions")" Subtitle="@T("مصفوفة الصلاحيات لكل دور. أي تعديل يتطلب سببًا ويُسجَّل بالقيم القديمة والجديدة، ويُطبَّق على المستخدمين خلال دقيقة.", "Permission matrix per role. Every change needs a reason, is logged with old and new values, and applies to users within a minute.")">
+        <Actions>
+            <button class="secondary-btn" @onclick="NewRole"><Icon Name="plus" />@T("دور جديد", "New role")</button>
+            @if (_dirty)
+            {
+                <button class="secondary-btn" disabled="@Busy" @onclick="Discard"><Icon Name="rotate-ccw" />@T("تراجع", "Discard")</button>
+                <button class="primary-btn" disabled="@Busy" @onclick="AskReason"><Icon Name="save" />@T("حفظ التغييرات", "Save changes") (@ChangedCount)</button>
+            }
+        </Actions>
+    </PageHeader>
+
+    <PageState Loading="Loading" Error="@Error" Empty="@(_roles.Count == 0)">
+        <section class="data-card">
+            <div class="toolbar">
+                <div class="search-field"><Icon Name="search" /><input @bind="_filter" @bind:event="oninput" placeholder="@T("ابحث في الصلاحيات…", "Filter permissions…")" /></div>
+                <label class="check"><input type="checkbox" @bind="_sensitiveOnly" />@T("الحساسة فقط", "Sensitive only")</label>
+            </div>
+            <div class="table-wrap"><table class="perm-matrix">
+                <thead>
+                    <tr>
+                        <th>@T("الصلاحية", "Permission")</th>
+                        @foreach (var r in _roles)
+                        {
+                            <th>
+                                <button class="link-btn" title="@r.DescriptionAr" @onclick="() => EditRole(r)">@Ui.N(r.NameAr, r.NameEn)</button>
+                                <small>@r.Users @T("مستخدم", "users")</small>
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var g in Perm.Groups)
+                    {
+                        var items = Perm.All.Where(p => p.Group == g.Key && Match(p)).ToList();
+                        if (items.Count == 0) continue;
+                        <tr class="group-row"><td colspan="@(_roles.Count + 1)">@T(g.Value.Ar, g.Value.En)</td></tr>
+                        @foreach (var p in items)
+                        {
+                            var key = p.Key;
+                            <tr>
+                                <td>
+                                    @T(p.Ar, p.En)
+                                    @if (p.Sensitive) { <StatusPill Css="warning">@T("حساسة", "Sensitive")</StatusPill> }
+                                    <small dir="ltr">@p.Key</small>
+                                </td>
+                                @foreach (var r in _roles)
+                                {
+                                    var roleId = r.Id;
+                                    <td><input type="checkbox" aria-label="@($"{r.Name}: {p.Key}")" checked="@_matrix[roleId].Contains(key)" @onchange="e => Toggle(roleId, key, e)" /></td>
+                                }
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table></div>
+        </section>
+    </PageState>
+</div>
+
+<Modal @bind-Open="_reasonOpen" Title="@T("سبب تعديل الصلاحيات", "Reason for permission change")">
+    <ChildContent>
+        <div class="notice-box warn">@T("سيتم حفظ التغييرات في سجل الإجراءات، وستُعاد مصادقة صلاحيات المستخدمين في الأدوار المعدلة.", "Changes will be recorded in the audit log and users in the affected roles will have their permissions refreshed.")</div>
+        <ul>
+            @foreach (var r in _roles.Where(r => !_matrix[r.Id].SetEquals(r.Permissions)))
+            {
+                <li><strong>@Ui.N(r.NameAr, r.NameEn)</strong>: +@_matrix[r.Id].Except(r.Permissions).Count() / −@r.Permissions.Except(_matrix[r.Id]).Count()</li>
+            }
+        </ul>
+        <div class="field"><label class="req">@T("السبب", "Reason")</label><textarea rows="3" @bind="_reason" @bind:event="oninput"></textarea></div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@(Busy || string.IsNullOrWhiteSpace(_reason))" @onclick="SaveMatrix">@T("تأكيد الحفظ", "Confirm save")</button></Footer>
+</Modal>
+
+<Modal @bind-Open="_roleOpen" Title="@(_roleId is null ? T("دور جديد", "New role") : T("تعديل الدور", "Edit role"))">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field"><label class="req">@T("المعرّف (لاتيني)", "Key (latin)")</label><input @bind="_rName" dir="ltr" disabled="@(_roleId is not null)" /></div>
+            <div class="field"><label class="req">@T("الاسم بالعربية", "Name (Arabic)")</label><input @bind="_rAr" /></div>
+            <div class="field"><label>@T("الاسم بالإنجليزية", "Name (English)")</label><input @bind="_rEn" dir="ltr" /></div>
+            <div class="field"><label>@T("الوصف", "Description")</label><input @bind="_rDesc" /></div>
+        </div>
+        @if (_roleId is null)
+        {
+            <div class="field"><label>@T("نسخ الصلاحيات من", "Copy permissions from")</label>
+                <select @bind="_copyFrom"><option value="">—</option>@foreach (var r in _roles) { <option value="@r.Id">@Ui.N(r.NameAr, r.NameEn)</option> }</select>
+            </div>
+        }
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="SaveRole">@T("حفظ", "Save")</button></Footer>
+</Modal>
+
+@code {
+    private List<RoleRow> _roles = [];
+    private Dictionary<string, HashSet<string>> _matrix = [];
+    private string? _filter;
+    private bool _sensitiveOnly, _reasonOpen, _roleOpen;
+    private string _reason = "";
+    private string? _roleId;
+    private string _rName = "", _rAr = "", _rEn = "", _rDesc = "", _copyFrom = "";
+
+    private bool _dirty => _roles.Any(r => !_matrix[r.Id].SetEquals(r.Permissions));
+    private int ChangedCount => _roles.Sum(r => _matrix[r.Id].Except(r.Permissions).Count() + r.Permissions.Except(_matrix[r.Id]).Count());
+
+    protected override async Task LoadAsync()
+    {
+        _roles = await S<AdminService>().RolesAsync();
+        _matrix = _roles.ToDictionary(r => r.Id, r => r.Permissions.ToHashSet());
+    }
+
+    private bool Match(PermissionDef p) =>
+        (!_sensitiveOnly || p.Sensitive) &&
+        (string.IsNullOrWhiteSpace(_filter) || p.Ar.Contains(_filter, StringComparison.OrdinalIgnoreCase) || p.En.Contains(_filter, StringComparison.OrdinalIgnoreCase) || p.Key.Contains(_filter, StringComparison.OrdinalIgnoreCase));
+
+    private void Toggle(string roleId, string key, ChangeEventArgs e)
+    {
+        if (e.Value is true) _matrix[roleId].Add(key); else _matrix[roleId].Remove(key);
+    }
+
+    private void Discard() => _matrix = _roles.ToDictionary(r => r.Id, r => r.Permissions.ToHashSet());
+    private void AskReason() { _reason = ""; _reasonOpen = true; }
+
+    private async Task SaveMatrix()
+    {
+        var changed = _roles.Where(r => !_matrix[r.Id].SetEquals(r.Permissions)).Select(r => (r.Id, Perms: _matrix[r.Id].ToList())).ToList();
+        var reason = _reason;
+        var ok = await Run(async () =>
+        {
+            var admin = S<AdminService>();
+            foreach (var (id, perms) in changed) await admin.SetRolePermissionsAsync(id, perms, reason);
+        }, "تم حفظ مصفوفة الصلاحيات", "Permission matrix saved");
+        if (ok) _reasonOpen = false;
+    }
+
+    private void NewRole() { _roleId = null; _rName = _rAr = _rEn = _rDesc = _copyFrom = ""; _roleOpen = true; }
+    private void EditRole(RoleRow r) { _roleId = r.Id; _rName = r.Name; _rAr = r.NameAr; _rEn = r.NameEn; _rDesc = r.DescriptionAr; _roleOpen = true; }
+
+    private async Task SaveRole()
+    {
+        string? roleId = _roleId;
+        var copy = _roleId is null && !string.IsNullOrEmpty(_copyFrom) ? _roles.FirstOrDefault(r => r.Id == _copyFrom)?.Permissions.ToList() : null;
+        var pendingMatrix = _dirty;
+        var ok = await Run(async () =>
+        {
+            var admin = S<AdminService>();
+            var id = await admin.SaveRoleAsync(roleId, _rName, _rAr, _rEn, _rDesc);
+            if (copy is { Count: > 0 }) await admin.SetRolePermissionsAsync(id, copy, T("نسخ من دور قائم عند الإنشاء", "Copied from an existing role at creation"));
+        }, "تم حفظ الدور", "Role saved", reload: !pendingMatrix);
+        if (ok) _roleOpen = false;
+        if (ok && pendingMatrix) Toast.Show(T("لديك تعديلات غير محفوظة في المصفوفة. احفظها ثم حدّث الصفحة لرؤية الدور الجديد.", "You have unsaved matrix changes. Save them, then refresh to see the new role."), "info");
+    }
+}

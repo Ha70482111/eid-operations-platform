@@ -1,0 +1,117 @@
+@page "/collections/agreements/{Id:int}"
+@attribute [Authorize(Policy = Perm.AgreementsManage + "," + Perm.AgreementsApprove)]
+@inherits EidPage
+
+<PageTitle>@T("الاتفاقية", "Agreement") @_a?.Number</PageTitle>
+<div class="page">
+    <PageState Loading="Loading" Error="@Error">
+        @if (_a is not null)
+        {
+            var today = DateOnly.FromDateTime(QatarTime.Now);
+            <PageHeader Eyebrow="@($"C18 · {_a.Number} · v{_a.Version}")" Title="@(_a.Donor?.DisplayName(Ui.IsAr) ?? "")" Subtitle="@T("اتفاقية تبرع بدفعات — كل دفعة مستلمة تصدر سندًا مستقلًا مرتبطًا بالاتفاقية.", "Installment agreement — each payment received issues its own receipt linked to the agreement.")">
+                <Actions>
+                    <StatusPill Tone="StatusText.Of(_a.Status)" />
+                    @if (_a.Status == AgreementStatus.Draft && Can(Perm.AgreementsManage))
+                    {
+                        <a class="secondary-btn" href="/collections/agreements/@_a.Id/edit"><Icon Name="pencil-line" />@T("تعديل", "Edit")</a>
+                        <button class="primary-btn" disabled="@Busy" @onclick="Submit"><Icon Name="send" />@T("إرسال للمراجعة", "Submit for review")</button>
+                    }
+                    @if (_a.Status == AgreementStatus.UnderReview && Can(Perm.AgreementsApprove))
+                    {
+                        <button class="primary-btn" disabled="@Busy" @onclick="Approve"><Icon Name="badge-check" />@T("اعتماد", "Approve")</button>
+                    }
+                    @if (_a.Status == AgreementStatus.AwaitingSignature && Can(Perm.AgreementsManage))
+                    {
+                        <button class="primary-btn" @onclick="() => _signOpen = true"><Icon Name="file-check-2" />@T("تسجيل النسخة الموقعة", "Record signed copy")</button>
+                    }
+                    @if (_a.Status is AgreementStatus.Active && Can(Perm.CollectUse))
+                    {
+                        <a class="secondary-btn" href="/collections"><Icon Name="hand-coins" />@T("تحصيل دفعة", "Collect installment")</a>
+                    }
+                    @if (_a.Status is not (AgreementStatus.Cancelled or AgreementStatus.Completed) && Can(Perm.AgreementsApprove))
+                    {
+                        <button class="danger-text" @onclick="() => _cancelOpen = true"><Icon Name="ban" />@T("إلغاء الاتفاقية", "Cancel agreement")</button>
+                    }
+                </Actions>
+            </PageHeader>
+            <section class="metric-strip">
+                <Metric Label="@T("الإجمالي", "Total")" Value="@Ui.Money(_a.Total)" IconName="file-check-2" />
+                <Metric Label="@T("المحصّل", "Collected")" Value="@Ui.Money(_a.Collected)" IconName="badge-check" />
+                <Metric Label="@T("المتبقي", "Remaining")" Value="@Ui.Money(_a.Remaining)" IconName="hourglass" />
+                <Metric Label="@T("دفعات متأخرة", "Overdue installments")" Value="@_a.Installments.Count(i => i.Compute(today) == InstallmentStatus.Overdue).ToString()" Currency="false" IconName="calendar-clock" Warn="true" />
+            </section>
+            <div class="grid-2">
+                <section class="data-card">
+                    <div class="card-head"><div><h2>@T("المشاريع", "Projects")</h2></div></div>
+                    <div class="table-wrap"><table><tbody>
+                        @foreach (var l in _a.Lines) { <tr><td><strong>@Ui.N(l.ProjectNameAr, l.ProjectNameEn)</strong></td><td class="num"><Money Value="l.Amount" /></td></tr> }
+                    </tbody></table></div>
+                    <div class="kv">
+                        <div><span>@T("الشروط", "Terms")</span><strong>@(string.IsNullOrEmpty(_a.Terms) ? "—" : _a.Terms)</strong></div>
+                        <div><span>@T("التقارير", "Reporting")</span><strong>@(string.IsNullOrEmpty(_a.ReportingTerms) ? "—" : _a.ReportingTerms)</strong></div>
+                        <div><span>@T("النسخة الموقعة", "Signed copy")</span><strong>@(_a.SignedCopyReference ?? "—")</strong></div>
+                        @if (_a.AmendmentReason is not null) { <div><span>@T("سبب التعديل/الإلغاء", "Amendment/cancel reason")</span><strong>@_a.AmendmentReason</strong></div> }
+                    </div>
+                </section>
+                <section class="data-card">
+                    <div class="card-head"><div><h2>@T("جدول الدفعات", "Installments")</h2><p>@T("الدفعة المتأخرة تبقى ظاهرة حتى تُسدد أو يُعاد جدولتها بقرار موثق", "Overdue stays visible until paid or rescheduled by a documented decision")</p></div></div>
+                    <div class="table-wrap"><table>
+                        <thead><tr><th>#</th><th>@T("الاستحقاق", "Due")</th><th class="num">@T("المبلغ", "Amount")</th><th class="num">@T("المسدد", "Paid")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var i in _a.Installments.OrderBy(i => i.Seq))
+                            {
+                                var st = i.Compute(today);
+                                <tr>
+                                    <td>@i.Seq</td>
+                                    <td dir="ltr">@Ui.Date(i.DueDate)@if (i.PreviousDueDate is not null) { <span>@T("كان", "was") @Ui.Date(i.PreviousDueDate)</span> }</td>
+                                    <td class="num"><Money Value="i.Amount" ShowCurrency="false" /></td>
+                                    <td class="num"><Money Value="i.PaidAmount" ShowCurrency="false" /></td>
+                                    <td><StatusPill Tone="StatusText.Of(st)" /></td>
+                                    <td class="actions">@if (st is not (InstallmentStatus.Paid or InstallmentStatus.Cancelled) && Can(Perm.AgreementsReschedule)) { <button class="secondary-btn btn-sm" @onclick="() => OpenReschedule(i)">@T("إعادة جدولة", "Reschedule")</button> }</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table></div>
+                </section>
+            </div>
+        }
+    </PageState>
+</div>
+
+<Modal @bind-Open="_signOpen" Title="@T("تسجيل النسخة الموقعة", "Record signed copy")">
+    <ChildContent><div class="field"><label class="req">@T("مرجع النسخة الموقعة / رقم الأرشفة", "Signed copy / archive reference")</label><input @bind="_text" /></div></ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Sign">@T("تفعيل الاتفاقية", "Activate agreement")</button></Footer>
+</Modal>
+<Modal @bind-Open="_cancelOpen" Title="@T("إلغاء الاتفاقية", "Cancel agreement")">
+    <ChildContent>
+        <div class="notice-box warn"><Icon Name="triangle-alert" />@T("لا تُحذف السندات المحصلة. يُعالج المحصّل بإجراء منفصل (استرداد أو إبقاء بموافقة المتبرع).", "Collected receipts are never deleted; collected money is handled by a separate procedure.")</div>
+        <div class="field"><label class="req">@T("السبب", "Reason")</label><textarea @bind="_text"></textarea></div>
+    </ChildContent>
+    <Footer><button class="danger-btn" disabled="@Busy" @onclick="Cancel">@T("تأكيد الإلغاء", "Confirm cancellation")</button></Footer>
+</Modal>
+<Modal @bind-Open="_reschOpen" Title="@T("إعادة جدولة دفعة", "Reschedule installment")">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field"><label class="req">@T("التاريخ الجديد", "New date")</label><input type="date" @bind="_newDate" /></div>
+            <div class="field full"><label class="req">@T("السبب", "Reason")</label><textarea @bind="_text"></textarea></div>
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Reschedule">@T("حفظ", "Save")</button></Footer>
+</Modal>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private Agreement? _a;
+    private bool _signOpen, _cancelOpen, _reschOpen;
+    private string _text = "";
+    private int _instId;
+    private DateOnly _newDate;
+
+    protected override async Task LoadAsync() => _a = await S<AgreementService>().GetAsync(Id);
+    private void OpenReschedule(Installment i) { _instId = i.Id; _newDate = i.DueDate.AddMonths(1); _text = ""; _reschOpen = true; }
+    private Task Submit() => Run(() => S<AgreementService>().SubmitAsync(Id), "أُرسلت الاتفاقية للمراجعة", "Sent for review");
+    private Task Approve() => Run(() => S<AgreementService>().ApproveAsync(Id, null), "اعتُمدت الاتفاقية — بانتظار التوقيع", "Approved — awaiting signature");
+    private async Task Sign() { if (await Run(() => S<AgreementService>().MarkSignedAsync(Id, _text), "تم تفعيل الاتفاقية", "Agreement activated")) { _signOpen = false; _text = ""; } }
+    private async Task Cancel() { if (await Run(() => S<AgreementService>().CancelAsync(Id, _text), "أُلغيت الاتفاقية", "Agreement cancelled")) { _cancelOpen = false; _text = ""; } }
+    private async Task Reschedule() { if (await Run(() => S<AgreementService>().RescheduleAsync(_instId, _newDate, _text), "تمت إعادة الجدولة", "Rescheduled")) _reschOpen = false; }
+}

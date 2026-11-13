@@ -1,0 +1,73 @@
+@page "/collections/donors/new"
+@page "/collections/donors/{Id:int}/edit"
+@attribute [Authorize(Policy = Perm.DonorsManage)]
+@inherits EidPage
+
+<PageTitle>@T("بيانات المتبرع", "Donor details")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C07" Title="@(Id is null ? T("متبرع جديد", "New donor") : T("تعديل بيانات المتبرع", "Edit donor"))" Subtitle="@T("يتحقق النظام من الهاتف والبريد والهوية والسجل قبل الحفظ لتجنب التكرار.", "Phone, email, ID and registration are checked for duplicates before saving.")" />
+    <PageState Loading="Loading" Error="@Error">
+        <section class="form-card">
+            @if (_dupes.Count > 0)
+            {
+                <div class="notice-box warn"><Icon Name="triangle-alert" />
+                    <div>
+                        <strong>@T("سجلات مشابهة:", "Similar records:")</strong>
+                        @foreach (var h in _dupes)
+                        {
+                            <div><a class="link-btn" href="/collections/donors/@h.Donor.Id">@h.Donor.Number — @h.Donor.DisplayName(Ui.IsAr)</a> <StatusPill Css="@(h.Strong ? "warning" : "neutral")">@T(h.ReasonAr, h.ReasonEn)</StatusPill></div>
+                        }
+                        <p>@T("تشابه الاسم وحده لا يكفي للدمج. إن كان نفس الشخص استخدم السجل الموجود.", "Name similarity alone is never enough to merge. If it is the same person, use the existing record.")</p>
+                    </div>
+                </div>
+            }
+            <DonorForm Model="_d" />
+            @if (_d.Type == DonorType.Organization)
+            {
+                <h3 class="mt" style="font-weight:800;font-size:13px">@T("ممثلو الجهة", "Representatives")</h3>
+                @foreach (var r in _d.Representatives)
+                {
+                    <div class="form-grid three mt" style="align-items:end">
+                        <div class="field"><label>@T("الاسم", "Name")</label><input @bind="r.Name" /></div>
+                        <div class="field"><label>@T("الصفة", "Title")</label><input @bind="r.Title" /></div>
+                        <div class="field"><label>@T("الهاتف", "Phone")</label><input @bind="r.Phone" dir="ltr" /></div>
+                        <div class="field"><label>@T("البريد", "Email")</label><input @bind="r.Email" dir="ltr" /></div>
+                        <div class="field"><label>@T("مرجع التفويض", "Authorization ref.")</label><input @bind="r.AuthorizationReference" /></div>
+                        <div class="row"><label class="check"><input type="checkbox" @bind="r.CanSign" />@T("مفوض بالتوقيع", "Can sign")</label>
+                            <button class="icon-btn sm" @onclick="() => _d.Representatives.Remove(r)"><Icon Name="trash-2" /></button></div>
+                    </div>
+                }
+                <button class="text-action" @onclick="() => _d.Representatives.Add(new DonorRepresentative())"><Icon Name="plus" />@T("إضافة ممثل", "Add representative")</button>
+            }
+            <div class="form-actions">
+                <a class="secondary-btn" href="@(Id is null ? "/collections/donors" : $"/collections/donors/{Id}")">@T("إلغاء", "Cancel")</a>
+                <button class="primary-btn" disabled="@Busy" @onclick="Save"><Icon Name="save" />@(_dupes.Count > 0 && !_confirmedDupes ? T("حفظ رغم التشابه", "Save anyway") : T("حفظ", "Save"))</button>
+            </div>
+        </section>
+    </PageState>
+</div>
+@code {
+    [Parameter] public int? Id { get; set; }
+    private Donor _d = new();
+    private List<DuplicateHint> _dupes = [];
+    private bool _checked, _confirmedDupes;
+
+    protected override async Task LoadAsync()
+    {
+        if (Id is int id) _d = await S<DonorService>().GetAsync(id);
+    }
+
+    private async Task Save()
+    {
+        if (!_checked)
+        {
+            _dupes = await S<DonorService>().FindDuplicatesAsync(_d);
+            _checked = true;
+            if (_dupes.Count > 0) return;
+        }
+        _confirmedDupes = true;
+        var newId = 0;
+        if (await Run(async () => newId = await S<DonorService>().SaveAsync(_d), "تم حفظ بيانات المتبرع", "Donor saved", reload: false))
+            Nav.NavigateTo($"/collections/donors/{newId}");
+    }
+}

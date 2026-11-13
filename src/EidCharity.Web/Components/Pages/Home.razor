@@ -1,0 +1,17 @@
+@page "/"
+@inherits EidPage
+@code {
+    // Each user lands on the system their role works in.
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        var target = Can(Perm.CollectUse) ? "/collections"
+            : Can(Perm.ProjectsView) ? "/projects"
+            : Can(Perm.FinanceReview) ? "/projects/finance"
+            : Can(Perm.DonationsVerify) ? "/collections/pending"
+            : Can(Perm.AdminUsers) ? "/admin/users"
+            : Can(Perm.AuditView) ? "/admin/audit"
+            : "/account/denied";
+        Nav.NavigateTo(target, replace: true);
+    }
+}

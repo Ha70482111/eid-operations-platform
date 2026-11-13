@@ -1,0 +1,52 @@
+@page "/collections/corrections"
+@attribute [Authorize(Policy = Perm.ReceiptsCorrect + "," + Perm.ReceiptsCorrectApprove)]
+@inherits EidPage
+
+<PageTitle>@T("تصحيح السندات", "Receipt corrections")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C23" Title="@T("تصحيح وإلغاء السندات", "Receipt corrections & cancellations")" Subtitle="@T("لا يُحذف السند ولا تُعدل قيمته مباشرة. الإلغاء يعكس الأثر، والتصحيح يصدر سندًا بديلًا مرتبطًا بالأصل.", "Receipts are never deleted or edited. Cancelling reverses the effect; correcting issues a replacement linked to the original.")" />
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("السند", "Receipt")</th><th>@T("النوع", "Type")</th><th>@T("السبب", "Reason")</th><th>@T("البيانات الصحيحة", "Correct data")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var c in _items)
+                {
+                    <tr>
+                        <td><a href="/collections/receipts/@c.ReceiptId"><strong>#@c.ReceiptId</strong></a><span>@Ui.Date(c.CreatedAt)</span></td>
+                        <td>@(c.Type == CorrectionType.Cancel ? T("إلغاء", "Cancel") : T("تصحيح", "Correct"))</td>
+                        <td>@c.Reason</td>
+                        <td>@c.CorrectedDonorNote</td>
+                        <td><StatusPill Tone="StatusText.Of(c.Status)" /></td>
+                        <td class="actions">@if (c.Status == RequestStatus.Submitted && Can(Perm.ReceiptsCorrectApprove)) {
+                            <button class="danger-text" disabled="@Busy" @onclick="() => Decide(c, false)">@T("رفض", "Reject")</button>
+                            <button class="primary-btn btn-sm" @onclick="() => Open(c)">@T("اعتماد", "Approve")</button> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal @bind-Open="_open" Title="@T("اعتماد التصحيح", "Approve correction")">
+    <ChildContent>
+        @if (_target?.Type == CorrectionType.Correct)
+        {
+            <DonorPicker Label="@T("المتبرع الصحيح في السند البديل (اختياري)", "Correct donor on replacement (optional)")" Search="SearchDonors" @bind-Selected="_donor" />
+        }
+        else
+        {
+            <div class="notice-box warn"><Icon Name="triangle-alert" />@T("سيُلغى السند ويُعكس أثره على المشروع والعهدة.", "The receipt will be cancelled and its effect reversed on the project and custody.")</div>
+        }
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="() => Decide(_target!, true)">@T("تأكيد الاعتماد", "Confirm approval")</button></Footer>
+</Modal>
+@code {
+    private List<ReceiptCorrection> _items = [];
+    private bool _open; private ReceiptCorrection? _target; private Donor? _donor;
+    protected override async Task LoadAsync() => _items = await S<AdjustmentService>().CorrectionsAsync();
+    private Task<List<Donor>> SearchDonors(string q) => S<DonorService>().SearchAsync(q, take: 8);
+    private void Open(ReceiptCorrection c) { _target = c; _donor = null; _open = true; }
+    private async Task Decide(ReceiptCorrection c, bool approve)
+    {
+        if (await Run(() => S<AdjustmentService>().DecideCorrectionAsync(c.Id, approve, _donor?.Id), approve ? "تم الاعتماد" : "رُفض الطلب", approve ? "Approved" : "Rejected")) _open = false;
+    }
+}

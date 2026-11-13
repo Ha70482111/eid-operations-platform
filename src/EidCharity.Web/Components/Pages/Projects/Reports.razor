@@ -1,0 +1,57 @@
+@page "/projects/reports"
+@attribute [Authorize(Policy = Perm.ProjectsReports)]
+@inherits EidPage
+@inject IJSRuntime JS
+
+<PageTitle>@T("تقارير المشاريع", "Project reports")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="P22" Title="@T("تقارير المشاريع", "Project reports")" Subtitle="@T("الموقف المالي لكل مشروع: التحصيل الوارد من نظام التحصيل مقابل الميزانية والمحجوز والمنفذ.", "Each project's financial position: collections received from the Collections system vs budget, reserved and executed.")">
+        <Actions>@if (Can(Perm.ProjectsExport)) { <button class="secondary-btn" @onclick="Export"><Icon Name="download" />@T("تصدير CSV", "Export CSV")</button> }</Actions>
+    </PageHeader>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_rows.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("المشروع", "Project")</th><th>@T("الحالة", "Status")</th><th class="num">@T("السقف", "Cap")</th><th class="num">@T("متوقع", "Expected")</th><th class="num">@T("معلق", "Pending")</th><th class="num">@T("صافي المؤكد", "Confirmed net")</th><th class="num">@T("الميزانية", "Budget")</th><th class="num">@T("محجوز", "Reserved")</th><th class="num">@T("منفذ", "Executed")</th><th class="num">@T("متاح للصرف", "Available")</th></tr></thead>
+            <tbody>
+                @foreach (var r in _rows)
+                {
+                    var f = r.Financials;
+                    <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/projects/{r.Project.Id}"))">
+                        <td><strong>@Ui.N(r.Project.NameAr, r.Project.NameEn)</strong><span dir="ltr">@r.Project.Code · @Ui.N(r.Project.ProgramNameAr, r.Project.ProgramNameEn)</span></td>
+                        <td><StatusPill Tone="StatusText.Of(r.Project.Collection)" /></td>
+                        <td class="num"><Money Value="f.CollectionCap" ShowCurrency="false" /></td>
+                        <td class="num"><Money Value="f.Pledged" ShowCurrency="false" /></td>
+                        <td class="num"><Money Value="f.Pending" ShowCurrency="false" /></td>
+                        <td class="num"><strong><Money Value="f.ConfirmedNet" ShowCurrency="false" /></strong></td>
+                        <td class="num"><Money Value="f.BudgetTotal" ShowCurrency="false" /></td>
+                        <td class="num"><Money Value="f.Reserved" ShowCurrency="false" /></td>
+                        <td class="num"><Money Value="f.Executed" ShowCurrency="false" /></td>
+                        <td class="num"><Money Value="f.AvailableToSpend" ShowCurrency="false" /></td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot><tr><td colspan="2">@T("الإجمالي", "Total")</td>
+                <td class="num"><Money Value="_rows.Sum(r => r.Financials.CollectionCap)" ShowCurrency="false" /></td>
+                <td class="num"><Money Value="_rows.Sum(r => r.Financials.Pledged)" ShowCurrency="false" /></td>
+                <td class="num"><Money Value="_rows.Sum(r => r.Financials.Pending)" ShowCurrency="false" /></td>
+                <td class="num"><Money Value="_rows.Sum(r => r.Financials.ConfirmedNet)" ShowCurrency="false" /></td>
+                <td class="num"><Money Value="_rows.Sum(r => r.Financials.BudgetTotal)" ShowCurrency="false" /></td>
+                <td class="num"><Money Value="_rows.Sum(r => r.Financials.Reserved)" ShowCurrency="false" /></td>
+                <td class="num"><Money Value="_rows.Sum(r => r.Financials.Executed)" ShowCurrency="false" /></td>
+                <td class="num"><Money Value="_rows.Sum(r => r.Financials.AvailableToSpend)" ShowCurrency="false" /></td></tr></tfoot>
+        </table></div></section>
+    </PageState>
+</div>
+@code {
+    private List<ProjectReportRow> _rows = [];
+    protected override async Task LoadAsync() => _rows = await S<ProjectsDashboardService>().FinancialReportAsync(null);
+    private async Task Export()
+    {
+        var sb = new System.Text.StringBuilder("Code,Project,Program,Cap,Expected,Pending,ConfirmedNet,Budget,Reserved,Executed,Available\n");
+        foreach (var r in _rows)
+        {
+            var f = r.Financials;
+            sb.AppendLine($"{r.Project.Code},\"{Ui.N(r.Project.NameAr, r.Project.NameEn)}\",\"{Ui.N(r.Project.ProgramNameAr, r.Project.ProgramNameEn)}\",{f.CollectionCap},{f.Pledged},{f.Pending},{f.ConfirmedNet},{f.BudgetTotal},{f.Reserved},{f.Executed},{f.AvailableToSpend}");
+        }
+        await JS.InvokeVoidAsync("eid.download", $"projects-financials-{DateTime.UtcNow:yyyyMMdd}.csv", "text/csv;charset=utf-8", sb.ToString());
+    }
+}

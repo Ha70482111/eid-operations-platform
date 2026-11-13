@@ -1,0 +1,48 @@
+@page "/collections/reports"
+@attribute [Authorize(Policy = Perm.CollectionsReports)]
+@inherits EidPage
+@inject IJSRuntime JS
+
+<PageTitle>@T("تقارير التحصيل", "Collection reports")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C26" Title="@T("تقارير التحصيل", "Collection reports")" Subtitle="@T("المؤكد حسب تاريخ التأكيد، والمسترد حسب تاريخ التنفيذ ومرتبط بالأصل. التعهدات والعيني خارج النقد. الأوقات بتوقيت قطر.", "Confirmed by confirmation date; refunds by execution date linked to the original. Pledges and in-kind are excluded from cash. Times in Qatar time.")">
+        <Actions>@if (Can(Perm.CollectionsExport)) { <button class="secondary-btn" @onclick="Export"><Icon Name="download" />@T("تصدير CSV", "Export CSV")</button> }</Actions>
+    </PageHeader>
+    <div class="card card-pad mb">
+        <div class="form-grid three" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+            <div class="field"><label>@T("التجميع حسب", "Group by")</label>
+                <select @bind="_group" @bind:after="Reload">
+                    @foreach (var (k, ar, en) in Groups) { <option value="@k">@T(ar, en)</option> }
+                </select></div>
+            <div class="field"><label>@T("من", "From")</label><input type="date" @bind="_from" @bind:after="Reload" /></div>
+            <div class="field"><label>@T("إلى", "To")</label><input type="date" @bind="_to" @bind:after="Reload" /></div>
+            <div class="field" style="justify-content:flex-end"><label class="check"><input type="checkbox" @bind="_mine" @bind:after="Reload" />@T("تحصيلي فقط", "My collections only")</label></div>
+        </div>
+    </div>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_rows.Count == 0)" EmptyAr="لا توجد بيانات في الفترة" EmptyEn="No data in this period">
+        <section class="data-card"><ReportTable Rows="_rows" /></section>
+    </PageState>
+</div>
+@code {
+    private static readonly (string, string, string)[] Groups =
+    [
+        ("project", "المشروع", "Project"), ("program", "البرنامج", "Program"), ("center", "المركز", "Center"), ("channel", "قناة الدفع", "Payment channel"),
+        ("collector", "المحصّل", "Collector"), ("item", "البند المالي", "Financial item"), ("license", "الترخيص", "License"),
+    ];
+    private string _group = "project";
+    private DateOnly _from = new(QatarTime.Now.Year, QatarTime.Now.Month, 1);
+    private DateOnly _to = DateOnly.FromDateTime(QatarTime.Now);
+    private bool _mine;
+    private List<ReportRow> _rows = [];
+
+    protected override async Task LoadAsync() =>
+        _rows = await S<CollectionStatsService>().ReportAsync(_group, _from.ToDateTime(TimeOnly.MinValue), _to.ToDateTime(TimeOnly.MaxValue), _mine);
+
+    private async Task Export()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Group,Currency,Count,Confirmed,Pending,Refunded,Net");
+        foreach (var r in _rows) sb.AppendLine($"\"{Ui.N(r.KeyAr, r.KeyEn).Replace("\"", "\"\"")}\",{r.Currency},{r.Count},{r.Confirmed},{r.Pending},{r.Refunded},{r.Net}");
+        await JS.InvokeVoidAsync("eid.download", $"collections-{_group}-{_from:yyyyMMdd}-{_to:yyyyMMdd}.csv", "text/csv;charset=utf-8", sb.ToString());
+    }
+}

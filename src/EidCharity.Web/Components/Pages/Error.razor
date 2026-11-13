@@ -1,0 +1,16 @@
+@page "/Error"
+@layout EidCharity.Web.Components.Layout.EmptyLayout
+@attribute [AllowAnonymous]
+@using System.Diagnostics
+@inject Ui Ui
+<div class="page" dir="@Ui.Dir">
+    <StatePanel Kind="error" TitleAr="حدث خطأ غير متوقع" TitleEn="An unexpected error occurred"
+                TextAr="@($"لم يُنفذ أي إجراء. رقم التتبع: {RequestId}")" TextEn="@($"Nothing was applied. Trace id: {RequestId}")">
+        <a class="primary-btn" href="/">@Ui.T("العودة للرئيسية", "Back to home")</a>
+    </StatePanel>
+</div>
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+    private string? RequestId { get; set; }
+    protected override void OnInitialized() => RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

@@ -1,0 +1,90 @@
+@page "/admin/audit"
+@attribute [Authorize(Policy = Perm.AuditView)]
+@inherits EidPage
+
+<PageTitle>@T("سجل الإجراءات", "Audit trail")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="A7" Title="@T("سجل الإجراءات", "Audit trail")" Subtitle="@T("كل إجراء حساس في النظامين: من قام به، ومتى، وما القيم قبل وبعد، والسبب. السجل للقراءة فقط ولا يمكن تعديله.", "Every sensitive action in both systems: who, when, values before and after, and the reason. Read-only and tamper-evident.")" />
+    <section class="data-card">
+        <div class="toolbar">
+            <div class="search-field"><Icon Name="search" /><input @bind="_text" @bind:event="oninput" @onkeyup="Key" placeholder="@T("مستخدم، إجراء، رقم مرجعي… ثم Enter", "User, action, reference… then Enter")" /></div>
+            <select class="input" style="width:auto" @bind="_module" @bind:after="Search">
+                <option value="">@T("كل الوحدات", "All modules")</option>
+                @foreach (var m in Modules) { <option value="@m.Key">@T(m.Ar, m.En)</option> }
+            </select>
+            <input class="input" style="width:auto" type="date" @bind="_from" @bind:after="Search" title="@T("من", "From")" />
+            <input class="input" style="width:auto" type="date" @bind="_to" @bind:after="Search" title="@T("إلى", "To")" />
+        </div>
+        <PageState Loading="Loading" Error="@Error" Empty="@(_page?.Items.Count == 0)">
+            <div class="table-wrap"><table>
+                <thead><tr><th>@T("الوقت", "Time")</th><th>@T("المستخدم", "User")</th><th>@T("الوحدة", "Module")</th><th>@T("الإجراء", "Action")</th><th>@T("السجل", "Record")</th><th>@T("السبب", "Reason")</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var a in _page?.Items ?? [])
+                    {
+                        <tr>
+                            <td dir="ltr">@Ui.DateTimeStr(a.At)</td>
+                            <td>@(a.UserName ?? T("النظام", "System"))<small dir="ltr">@a.IpAddress</small></td>
+                            <td>@ModuleName(a.Module)</td>
+                            <td><strong dir="ltr">@a.Action</strong></td>
+                            <td dir="ltr">@a.EntityType @(a.EntityId is null ? "" : "#" + a.EntityId)<small>@a.Reference</small></td>
+                            <td>@a.Reason</td>
+                            <td class="actions">@if (a.OldValues is not null || a.NewValues is not null) { <button class="icon-btn sm" title="@T("التفاصيل", "Details")" @onclick="() => _sel = a"><Icon Name="eye" /></button> }</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <Pager Page="_pageNo" Total="@(_page?.Total ?? 0)" PageSize="30" PageChanged="GoTo" />
+        </PageState>
+    </section>
+</div>
+<Modal Open="@(_sel is not null)" OpenChanged="v => { if (!v) _sel = null; }" Title="@T("تفاصيل الإجراء", "Action details")" Wide="true">
+    <ChildContent>
+        @if (_sel is not null)
+        {
+            <div class="kv">
+                <div><span>@T("الإجراء", "Action")</span><strong dir="ltr">@_sel.Action</strong></div>
+                <div><span>@T("المستخدم", "User")</span><strong>@_sel.UserName</strong></div>
+                <div><span>@T("الوقت", "Time")</span><strong dir="ltr">@Ui.DateTimeStr(_sel.At)</strong></div>
+                <div><span>@T("السبب", "Reason")</span><strong>@(_sel.Reason ?? "—")</strong></div>
+            </div>
+            <div class="form-grid">
+                <div class="field"><label>@T("القيم السابقة", "Old values")</label><pre class="code-block" dir="ltr">@Pretty(_sel.OldValues)</pre></div>
+                <div class="field"><label>@T("القيم الجديدة", "New values")</label><pre class="code-block" dir="ltr">@Pretty(_sel.NewValues)</pre></div>
+            </div>
+        }
+    </ChildContent>
+</Modal>
+@code {
+    private record ModuleDef(string Key, string Ar, string En);
+    private static readonly ModuleDef[] Modules =
+    [
+        new("Security", "الأمان والدخول", "Security"), new("Admin", "الإدارة", "Administration"),
+        new("Projects", "المشاريع", "Projects"), new("Finance", "المالية", "Finance"), new("Collections", "التحصيل", "Collections"),
+        new("Files", "الملفات", "Files"), new("Integration", "الربط", "Integration"), new("Data", "البيانات", "Data"),
+    ];
+
+    private PagedResult<AuditLog>? _page;
+    private int _pageNo = 1;
+    private string? _text, _module;
+    private DateTime? _from, _to;
+    private AuditLog? _sel;
+
+    protected override async Task LoadAsync()
+    {
+        DateTime? from = _from is null ? null : QatarTime.ToUtc(_from.Value.Date);
+        DateTime? to = _to is null ? null : QatarTime.ToUtc(_to.Value.Date);
+        _page = await S<AuditService>().SearchAsync(_text, _module, from, to, _pageNo);
+    }
+
+    private string ModuleName(string key) => Modules.FirstOrDefault(m => m.Key == key) is { } m ? T(m.Ar, m.En) : key;
+    private async Task Search() { _pageNo = 1; await Reload(); }
+    private async Task Key(KeyboardEventArgs e) { if (e.Key == "Enter") await Search(); }
+    private async Task GoTo(int p) { _pageNo = p; await Reload(); }
+
+    private static string Pretty(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return "—";
+        try { return System.Text.Json.JsonSerializer.Serialize(System.Text.Json.JsonDocument.Parse(json).RootElement, new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }); }
+        catch { return json; }
+    }
+}

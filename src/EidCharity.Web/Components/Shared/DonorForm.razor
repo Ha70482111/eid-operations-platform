@@ -1,0 +1,73 @@
+@inject Ui Ui
+<div class="form-grid">
+    <div class="field">
+        <label>@Ui.T("نوع المتبرع", "Donor type")</label>
+        <select @bind="Model.Type">
+            <option value="@DonorType.Individual">@Ui.T("فرد", "Individual")</option>
+            <option value="@DonorType.Organization">@Ui.T("جهة / شركة", "Organization")</option>
+        </select>
+    </div>
+    <div class="field">
+        <label>@Ui.T("الخصوصية", "Privacy")</label>
+        <select @bind="Model.Privacy">
+            <option value="@DonorPrivacy.Normal">@Ui.T("ظاهر بالاسم", "Named")</option>
+            <option value="@DonorPrivacy.KnownButHidden">@Ui.T("معروف مع إخفاء الاسم (فاعل خير)", "Known but hidden (benefactor)")</option>
+            <option value="@DonorPrivacy.Unknown">@Ui.T("مجهول", "Unknown")</option>
+        </select>
+    </div>
+    <div class="field">
+        <label class="req">@Ui.T("الاسم بالعربية", "Name (Arabic)")</label>
+        <input @bind="Model.NameAr" />
+    </div>
+    <div class="field">
+        <label>@Ui.T("الاسم بالإنجليزية", "Name (English)")</label>
+        <input @bind="Model.NameEn" dir="ltr" />
+    </div>
+    <div class="field">
+        <label>@Ui.T("الهاتف", "Phone")</label>
+        <div class="row" style="flex-wrap:nowrap;gap:6px">
+            <input @bind="Model.CountryCode" dir="ltr" style="width:84px" />
+            <input @bind="Model.Phone" dir="ltr" inputmode="tel" />
+        </div>
+    </div>
+    <div class="field">
+        <label>@Ui.T("البريد الإلكتروني", "Email")</label>
+        <input @bind="Model.Email" dir="ltr" type="email" />
+    </div>
+    @if (Model.Type == DonorType.Organization)
+    {
+        <div class="field">
+            <label class="req">@Ui.T("نوع الجهة", "Organization type")</label>
+            <input @bind="Model.OrganizationType" />
+        </div>
+        <div class="field">
+            <label>@Ui.T("رقم السجل التجاري", "Registration number")</label>
+            <input @bind="Model.RegistrationNumber" dir="ltr" />
+        </div>
+    }
+    else
+    {
+        <div class="field">
+            <label>@Ui.T("رقم الهوية (اختياري)", "National ID (optional)")</label>
+            <input @bind="Model.NationalId" dir="ltr" />
+        </div>
+    }
+    <div class="field">
+        <label>@Ui.T("الدولة", "Country")</label>
+        <input @bind="Model.Country" />
+    </div>
+    @if (!Compact)
+    {
+        <div class="field full">
+            <label>@Ui.T("العنوان", "Address")</label>
+            <input @bind="Model.Address" />
+        </div>
+    }
+    <div class="full">
+        <label class="check"><input type="checkbox" @bind="Model.MarketingConsent" />@Ui.T("يوافق على استلام رسائل المؤسسة وتقارير الأثر", "Agrees to receive foundation messages and impact reports")</label>
+    </div>
+</div>
+@code {
+    [Parameter, EditorRequired] public Donor Model { get; set; } = new();
+    [Parameter] public bool Compact { get; set; }
+}

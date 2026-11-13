@@ -1,0 +1,9 @@
+@page "/not-found"
+@layout EidCharity.Web.Components.Layout.EmptyLayout
+@attribute [AllowAnonymous]
+@inject Ui Ui
+<div class="page" dir="@Ui.Dir">
+    <StatePanel Kind="empty" TitleAr="الصفحة غير موجودة" TitleEn="Page not found" TextAr="ربما نُقلت الصفحة أو أن الرابط غير صحيح." TextEn="The page may have moved or the link is incorrect.">
+        <a class="primary-btn" href="/">@Ui.T("العودة للرئيسية", "Back to home")</a>
+    </StatePanel>
+</div>

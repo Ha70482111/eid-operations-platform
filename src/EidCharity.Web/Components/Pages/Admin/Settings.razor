@@ -1,0 +1,40 @@
+@page "/admin/settings"
+@attribute [Authorize(Policy = Perm.AdminSettings)]
+@inherits EidPage
+
+<PageTitle>@T("إعدادات النظام", "System settings")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="A6" Title="@T("إعدادات النظام", "System settings")" Subtitle="@T("قيم تشغيلية تتحكم في التنبيهات والتحصيل والسندات. كل تعديل يُسجّل بالقيمة القديمة والجديدة.", "Operational values controlling alerts, collections and receipts. Every change is logged with old and new values.")" />
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("الإعداد", "Setting")</th><th>@T("القيمة", "Value")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var s in _items)
+                {
+                    var key = s.Key;
+                    <tr>
+                        <td><strong>@Ui.N(s.DescriptionAr, s.DescriptionEn)</strong><small dir="ltr">@s.Key</small></td>
+                        <td style="min-width:240px"><input class="input" value="@_edits[key]" @onchange="e => _edits[key] = e.Value?.ToString() ?? string.Empty" dir="auto" /></td>
+                        <td class="actions">
+                            @if (_edits[key] != s.Value)
+                            {
+                                <button class="primary-btn btn-sm" disabled="@Busy" @onclick="() => Save(key)"><Icon Name="save" />@T("حفظ", "Save")</button>
+                                <button class="secondary-btn btn-sm" @onclick="() => _edits[key] = s.Value">@T("تراجع", "Undo")</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+@code {
+    private List<SystemSetting> _items = [];
+    private Dictionary<string, string> _edits = [];
+    protected override async Task LoadAsync()
+    {
+        _items = await S<AdminService>().SettingsAsync();
+        _edits = _items.ToDictionary(s => s.Key, s => s.Value);
+    }
+    private Task Save(string key) { var v = _edits[key].Trim(); return Run(() => S<AdminService>().SaveSettingAsync(key, v), "تم حفظ الإعداد", "Setting saved"); }
+}

@@ -1,0 +1,73 @@
+@page "/collections/pledges"
+@attribute [Authorize(Policy = Perm.PledgesManage)]
+@inherits EidPage
+
+<PageTitle>@T("التعهدات", "Pledges")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C16" Title="@T("التعهدات", "Pledges")" Subtitle="@T("التعهد نية تبرع لا يُحتسب تحصيلًا ولا يصدر له سند. يظهر في المشروع كمبلغ متوقع فقط.", "A pledge is an intention: not counted as collected and no receipt. Projects see it as expected only.")">
+        <Actions><button class="primary-btn" @onclick="New"><Icon Name="plus" />@T("تعهد جديد", "New pledge")</button></Actions>
+    </PageHeader>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("التعهد", "Pledge")</th><th>@T("المتبرع", "Donor")</th><th>@T("المشروع", "Project")</th><th class="num">@T("المبلغ", "Amount")</th><th class="num">@T("المحقق", "Fulfilled")</th><th>@T("المتوقع", "Expected")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in _items)
+                {
+                    <tr>
+                        <td><strong dir="ltr">@p.Number</strong></td>
+                        <td>@p.Donor?.DisplayName(Ui.IsAr)</td>
+                        <td>@ProjectName(p.ProjectId)</td>
+                        <td class="num"><Money Value="p.Amount" /></td>
+                        <td class="num"><Money Value="p.FulfilledAmount" ShowCurrency="false" /></td>
+                        <td dir="ltr">@Ui.Date(p.ExpectedDate)</td>
+                        <td><StatusPill Css="@(p.Status switch { PledgeStatus.Fulfilled => "success", PledgeStatus.Cancelled => "danger", PledgeStatus.Open => "warning", _ => "neutral" })">@PledgeText(p.Status)</StatusPill></td>
+                        <td class="actions"><button class="icon-btn sm" @onclick="() => Edit(p)"><Icon Name="pencil-line" /></button></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal @bind-Open="_open" Title="@T("تعهد", "Pledge")">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="full"><DonorPicker Label="@T("المتبرع", "Donor")" Required="true" Search="SearchDonors" @bind-Selected="_donor" /></div>
+            <div class="field full"><label class="req">@T("المشروع", "Project")</label>
+                <select @bind="_p.ProjectId"><option value="0">—</option>@foreach (var e in _projects) { <option value="@e.ProjectId">@e.ProjectCode — @Ui.N(e.NameAr, e.NameEn)</option> }</select></div>
+            <div class="field"><label class="req">@T("المبلغ", "Amount")</label><input type="number" step="0.01" @bind="_p.Amount" dir="ltr" /></div>
+            <div class="field"><label>@T("التاريخ المتوقع", "Expected date")</label><input type="date" @bind="_p.ExpectedDate" /></div>
+            <div class="field"><label>@T("الحالة", "Status")</label>
+                <select @bind="_p.Status">@foreach (var s in Enum.GetValues<PledgeStatus>()) { <option value="@s">@PledgeText(s)</option> }</select></div>
+            <div class="field full"><label>@T("ملاحظات", "Notes")</label><textarea @bind="_p.Notes"></textarea></div>
+        </div>
+    </ChildContent>
+    <Footer><button class="secondary-btn" @onclick="() => _open = false">@T("إلغاء", "Cancel")</button><button class="primary-btn" disabled="@Busy" @onclick="Save">@T("حفظ", "Save")</button></Footer>
+</Modal>
+@code {
+    private List<Pledge> _items = [];
+    private List<ProjectCatalogEntry> _projects = [];
+    private bool _open;
+    private Pledge _p = new();
+    private Donor? _donor;
+
+    protected override async Task LoadAsync()
+    {
+        _items = await S<AgreementService>().PledgesAsync();
+        _projects = await S<CatalogService>().EntriesAsync(false);
+    }
+
+    private string ProjectName(int id) { var e = _projects.FirstOrDefault(x => x.ProjectId == id); return e is null ? $"#{id}" : Ui.N(e.NameAr, e.NameEn); }
+    private string PledgeText(PledgeStatus s) => s switch
+    {
+        PledgeStatus.Open => T("مفتوح", "Open"), PledgeStatus.PartiallyFulfilled => T("محقق جزئيًا", "Partially fulfilled"), PledgeStatus.Fulfilled => T("محقق", "Fulfilled"),
+        PledgeStatus.Cancelled => T("ملغى", "Cancelled"), _ => T("تحول لاتفاقية", "Converted to agreement")
+    };
+    private Task<List<Donor>> SearchDonors(string q) => S<DonorService>().SearchAsync(q, take: 8);
+    private void New() { _p = new Pledge(); _donor = null; _open = true; }
+    private void Edit(Pledge p) { _p = new Pledge { Id = p.Id, DonorId = p.DonorId, ProjectId = p.ProjectId, Amount = p.Amount, ExpectedDate = p.ExpectedDate, Status = p.Status, Notes = p.Notes }; _donor = p.Donor; _open = true; }
+    private async Task Save()
+    {
+        _p.DonorId = _donor?.Id ?? 0;
+        if (await Run(() => S<AgreementService>().SavePledgeAsync(_p), "تم حفظ التعهد", "Pledge saved")) _open = false;
+    }
+}

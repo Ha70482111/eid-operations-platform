@@ -1,0 +1,7 @@
+@inject Ui Ui
+<span class="status @(Tone?.Css ?? Css)"><span class="status-dot"></span>@if (Tone is null) { @ChildContent } else { @Ui.T(Tone.Ar, Tone.En) }</span>
+@code {
+    [Parameter] public Tone? Tone { get; set; }
+    [Parameter] public string Css { get; set; } = "success";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

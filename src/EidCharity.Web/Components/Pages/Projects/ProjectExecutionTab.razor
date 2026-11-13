@@ -1,0 +1,164 @@
+@inherits EidPage
+@if (CanAny(Perm.ExecutionManage, Perm.ProjectSuspend) && !Project.IsClosed)
+{
+    <div class="card card-pad mb row between">
+        <div><strong>@T("حالة التنفيذ", "Execution status")</strong> <StatusPill Tone="StatusText.Of(Project.ExecutionStatus)" /></div>
+        <div class="row">
+            @if (Can(Perm.ExecutionManage) && Project.ExecutionStatus is ExecutionStatus.NotStarted or ExecutionStatus.Stopped) { <button class="secondary-btn btn-sm" @onclick="() => Open(ExecutionStatus.InProgress)"><Icon Name="circle-play" />@T("بدء / استئناف", "Start / resume")</button> }
+            @if (Can(Perm.ExecutionManage) && Project.ExecutionStatus == ExecutionStatus.InProgress) { <button class="secondary-btn btn-sm" @onclick="() => Open(ExecutionStatus.Completed)"><Icon Name="circle-check" />@T("اكتمل التنفيذ", "Mark completed")</button> }
+            @if (Can(Perm.ProjectSuspend) && Project.ExecutionStatus is ExecutionStatus.InProgress or ExecutionStatus.NotStarted) { <button class="secondary-btn btn-sm" @onclick="() => Open(ExecutionStatus.Stopped)"><Icon Name="circle-pause" />@T("إيقاف", "Stop")</button> }
+            @if (Can(Perm.ProjectSuspend) && Project.ExecutionStatus != ExecutionStatus.Cancelled) { <button class="danger-text" @onclick="() => Open(ExecutionStatus.Cancelled)"><Icon Name="ban" />@T("إلغاء المشروع", "Cancel project")</button> }
+        </div>
+    </div>
+}
+<section class="data-card">
+    <div class="card-head">
+        <div><h2>@T("الأنشطة والمراحل", "Activities & milestones")</h2><p>@T("التقدم يُقاس بالمؤشرات الفعلية مقابل المستهدف", "Progress is measured by actual vs target indicators")</p></div>
+        @if (Can(Perm.ExecutionManage) && !Project.IsClosed) { <button class="secondary-btn btn-sm" @onclick="NewMs"><Icon Name="plus" />@T("نشاط", "Activity")</button> }
+    </div>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_ms.Count == 0)" EmptyAr="لا توجد أنشطة" EmptyEn="No activities">
+        <div class="table-wrap"><table>
+            <thead><tr><th>@T("النشاط", "Activity")</th><th>@T("المخطط", "Planned")</th><th>@T("الفعلي", "Actual")</th><th>@T("المؤشر", "Indicator")</th><th>@T("الإنجاز", "Achievement")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var m in _ms)
+                {
+                    var pct = m.TargetValue > 0 ? Math.Min(100, m.ActualValue / m.TargetValue * 100) : 0;
+                    <tr>
+                        <td><strong>@Ui.Name(m)</strong><span>@m.Responsible</span>@if (m.DelayReason is not null) { <span>@T("سبب التأخر:", "Delay:") @m.DelayReason</span> }</td>
+                        <td dir="ltr">@Ui.Date(m.PlannedStart) → @Ui.Date(m.PlannedEnd)</td>
+                        <td dir="ltr">@Ui.Date(m.ActualStart) → @Ui.Date(m.ActualEnd)</td>
+                        <td>@m.Indicator<span>@m.ActualValue.ToString("0.##") / @m.TargetValue.ToString("0.##")</span></td>
+                        <td style="min-width:110px"><div class="progress thin"><i style="width:@(pct.ToString("0", System.Globalization.CultureInfo.InvariantCulture))%"></i></div><span>@pct.ToString("0")%</span></td>
+                        <td><StatusPill Tone="StatusText.Of(m.Status)" /></td>
+                        <td class="actions">@if (Can(Perm.ExecutionManage) && !Project.IsClosed) { <button class="icon-btn sm" @onclick="() => EditMs(m)"><Icon Name="pencil-line" /></button> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    </PageState>
+</section>
+<div class="grid-2 mt">
+    <section class="data-card">
+        <div class="card-head">
+            <div><h2>@T("المستفيدون", "Beneficiaries")</h2><p>@T("يُفصل العدد الفريد عن مرات الاستفادة", "Unique count is separate from occurrences")</p></div>
+            @if (Can(Perm.BeneficiariesManage) && !Project.IsClosed) { <button class="secondary-btn btn-sm" @onclick="NewBen"><Icon Name="plus" />@T("إضافة", "Add")</button> }
+        </div>
+        @if (_ben.Count == 0) { <div class="empty-hint">@T("لا توجد سجلات", "No records")</div> }
+        <div class="table-wrap"><table><tbody>
+            @foreach (var b in _ben)
+            {
+                <tr><td><strong>@b.Category</strong><span>@b.Location · @Ui.Date(b.PeriodFrom) → @Ui.Date(b.PeriodTo)</span></td><td>@b.UniqueCount @b.Unit<span>@T("مرات الاستفادة", "Occurrences") @b.Occurrences</span></td>
+                    <td class="actions">@if (Can(Perm.BeneficiariesManage) && !Project.IsClosed) { <button class="icon-btn sm" @onclick="() => { _b = b; _benOpen = true; }"><Icon Name="pencil-line" /></button> }</td></tr>
+            }
+        </tbody>
+        @if (_ben.Count > 0) { <tfoot><tr><td>@T("الإجمالي", "Total")</td><td>@_ben.Sum(b => b.UniqueCount) / @T("المستهدف", "target") @Project.TargetBeneficiaries</td><td></td></tr></tfoot> }
+        </table></div>
+    </section>
+    <section class="data-card">
+        <div class="card-head">
+            <div><h2>@T("تقارير المتبرعين", "Donor reports")</h2><p>@T("الالتزامات الواردة في الاتفاقيات", "Commitments from agreements")</p></div>
+            @if (Can(Perm.ExecutionManage) && !Project.IsClosed) { <button class="secondary-btn btn-sm" @onclick="NewRep"><Icon Name="plus" />@T("تقرير", "Report")</button> }
+        </div>
+        @if (_reps.Count == 0) { <div class="empty-hint">@T("لا توجد تقارير مطلوبة", "No reports due")</div> }
+        <div class="table-wrap"><table><tbody>
+            @foreach (var r in _reps)
+            {
+                <tr><td><strong>@r.Title</strong><span>@r.DonorName · @r.Responsible</span></td><td dir="ltr">@Ui.Date(r.DueDate)</td>
+                    <td><StatusPill Css="@(r.Status == DonorReportStatus.Sent ? "success" : r.DueDate < DateOnly.FromDateTime(QatarTime.Now) ? "danger" : "warning")">@RepText(r.Status)</StatusPill></td>
+                    <td class="actions">@if (Can(Perm.ExecutionManage) && !Project.IsClosed) { <button class="icon-btn sm" @onclick="() => { _r = r; _repOpen = true; }"><Icon Name="pencil-line" /></button> }</td></tr>
+            }
+        </tbody></table></div>
+    </section>
+</div>
+
+<Modal @bind-Open="_msOpen" Title="@T("نشاط تنفيذي", "Execution activity")" Wide="true">
+    <ChildContent>
+        <div class="form-grid three">
+            <div class="field"><label class="req">@T("الاسم بالعربية", "Name (Arabic)")</label><input @bind="_m.NameAr" /></div>
+            <div class="field"><label>@T("الاسم بالإنجليزية", "Name (English)")</label><input @bind="_m.NameEn" dir="ltr" /></div>
+            <div class="field"><label>@T("المسؤول", "Responsible")</label><input @bind="_m.Responsible" /></div>
+            <div class="field"><label>@T("بداية مخططة", "Planned start")</label><input type="date" @bind="_m.PlannedStart" /></div>
+            <div class="field"><label>@T("نهاية مخططة", "Planned end")</label><input type="date" @bind="_m.PlannedEnd" /></div>
+            <div class="field"><label>@T("الحالة", "Status")</label><select @bind="_m.Status">@foreach (var s in Enum.GetValues<MilestoneStatus>()) { <option value="@s">@T(StatusText.Of(s).Ar, StatusText.Of(s).En)</option> }</select></div>
+            <div class="field"><label>@T("بداية فعلية", "Actual start")</label><input type="date" @bind="_m.ActualStart" /></div>
+            <div class="field"><label>@T("نهاية فعلية", "Actual end")</label><input type="date" @bind="_m.ActualEnd" /></div>
+            <div class="field"><label>@T("المؤشر", "Indicator")</label><input @bind="_m.Indicator" /></div>
+            <div class="field"><label>@T("المستهدف", "Target")</label><input type="number" step="0.01" @bind="_m.TargetValue" dir="ltr" /></div>
+            <div class="field"><label>@T("المتحقق", "Actual")</label><input type="number" step="0.01" @bind="_m.ActualValue" dir="ltr" /></div>
+            @if (_m.Status == MilestoneStatus.Delayed)
+            {
+                <div class="field"><label class="req">@T("سبب التأخر", "Delay reason")</label><input @bind="_m.DelayReason" /></div>
+                <div class="field full"><label>@T("الإجراء التصحيحي", "Corrective action")</label><input @bind="_m.CorrectiveAction" /></div>
+            }
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="SaveMs">@T("حفظ", "Save")</button></Footer>
+</Modal>
+<Modal @bind-Open="_benOpen" Title="@T("سجل مستفيدين", "Beneficiary record")">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field"><label>@T("الفئة", "Category")</label><input @bind="_b.Category" /></div>
+            <div class="field"><label>@T("الوحدة", "Unit")</label><input @bind="_b.Unit" /></div>
+            <div class="field"><label>@T("العدد الفريد", "Unique count")</label><input type="number" @bind="_b.UniqueCount" dir="ltr" /></div>
+            <div class="field"><label>@T("مرات الاستفادة", "Occurrences")</label><input type="number" @bind="_b.Occurrences" dir="ltr" /></div>
+            <div class="field"><label>@T("من", "From")</label><input type="date" @bind="_b.PeriodFrom" /></div>
+            <div class="field"><label>@T("إلى", "To")</label><input type="date" @bind="_b.PeriodTo" /></div>
+            <div class="field full"><label>@T("الموقع", "Location")</label><input @bind="_b.Location" /></div>
+            <div class="field full"><label>@T("ملاحظات (لا تُدخل بيانات شخصية حساسة هنا)", "Notes (no sensitive personal data)")</label><textarea @bind="_b.Notes"></textarea></div>
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="SaveBen">@T("حفظ", "Save")</button></Footer>
+</Modal>
+<Modal @bind-Open="_repOpen" Title="@T("تقرير متبرع", "Donor report")">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field full"><label class="req">@T("العنوان", "Title")</label><input @bind="_r.Title" /></div>
+            <div class="field"><label>@T("المتبرع", "Donor")</label><input @bind="_r.DonorName" /></div>
+            <div class="field"><label>@T("تاريخ الاستحقاق", "Due date")</label><input type="date" @bind="_r.DueDate" /></div>
+            <div class="field"><label>@T("المسؤول", "Responsible")</label><input @bind="_r.Responsible" /></div>
+            <div class="field"><label>@T("الحالة", "Status")</label><select @bind="_r.Status">@foreach (var s in Enum.GetValues<DonorReportStatus>()) { <option value="@s">@RepText(s)</option> }</select></div>
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="SaveRep">@T("حفظ", "Save")</button></Footer>
+</Modal>
+<Modal @bind-Open="_stOpen" Title="@T("تغيير حالة التنفيذ", "Change execution status")">
+    <ChildContent>
+        @if (_newStatus is ExecutionStatus.Stopped or ExecutionStatus.Cancelled)
+        {
+            <div class="notice-box warn"><Icon Name="triangle-alert" />@T("سيُوقف التحصيل على المشروع فورًا ويُرسل التحديث لنظام التحصيل. اذكر السبب والنطاق والأثر.", "Collections stop immediately and the update is sent to Collections. State reason, scope and impact.")</div>
+        }
+        <div class="field"><label class="@(_newStatus is ExecutionStatus.Stopped or ExecutionStatus.Cancelled ? "req" : "")">@T("السبب / الملاحظة", "Reason / note")</label><textarea @bind="_reason"></textarea></div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="SetStatus">@T("تأكيد", "Confirm")</button></Footer>
+</Modal>
+@code {
+    [Parameter] public Project Project { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private List<ExecutionMilestone> _ms = [];
+    private List<BeneficiaryRecord> _ben = [];
+    private List<DonorReport> _reps = [];
+    private bool _msOpen, _benOpen, _repOpen, _stOpen;
+    private ExecutionMilestone _m = new();
+    private BeneficiaryRecord _b = new();
+    private DonorReport _r = new();
+    private ExecutionStatus _newStatus;
+    private string _reason = "";
+
+    protected override async Task LoadAsync()
+    {
+        var svc = S<ExecutionService>();
+        _ms = await svc.MilestonesAsync(Project.Id);
+        _ben = await svc.BeneficiariesAsync(Project.Id);
+        _reps = await svc.DonorReportsAsync(Project.Id);
+    }
+    private string RepText(DonorReportStatus s) => s switch { DonorReportStatus.Planned => T("مخطط", "Planned"), DonorReportStatus.Preparing => T("قيد الإعداد", "Preparing"), DonorReportStatus.UnderReview => T("قيد المراجعة", "Under review"), _ => T("مُرسل", "Sent") };
+    private void NewMs() { _m = new ExecutionMilestone { ProjectId = Project.Id }; _msOpen = true; }
+    private void EditMs(ExecutionMilestone m) { _m = m; _msOpen = true; }
+    private void NewBen() { _b = new BeneficiaryRecord { ProjectId = Project.Id, Unit = Project.BeneficiaryUnit, Category = Project.BeneficiaryCategory }; _benOpen = true; }
+    private void NewRep() { _r = new DonorReport { ProjectId = Project.Id, DueDate = DateOnly.FromDateTime(QatarTime.Now).AddMonths(1) }; _repOpen = true; }
+    private void Open(ExecutionStatus s) { _newStatus = s; _reason = ""; _stOpen = true; }
+    private async Task SaveMs() { if (await Run(() => S<ExecutionService>().SaveMilestoneAsync(_m), "تم الحفظ", "Saved")) { _msOpen = false; await OnChanged.InvokeAsync(); } }
+    private async Task SaveBen() { if (await Run(() => S<ExecutionService>().SaveBeneficiaryAsync(_b), "تم الحفظ", "Saved")) _benOpen = false; }
+    private async Task SaveRep() { if (await Run(() => S<ExecutionService>().SaveDonorReportAsync(_r), "تم الحفظ", "Saved")) _repOpen = false; }
+    private async Task SetStatus() { if (await Run(() => S<ClosureService>().SetExecutionStatusAsync(Project.Id, _newStatus, _reason), "تم تحديث حالة التنفيذ", "Execution status updated")) { _stOpen = false; await OnChanged.InvokeAsync(); } }
+}

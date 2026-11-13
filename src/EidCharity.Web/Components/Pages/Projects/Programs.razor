@@ -1,0 +1,55 @@
+@page "/projects/programs"
+@attribute [Authorize(Policy = Perm.ProgramsView)]
+@inherits EidPage
+
+<PageTitle>@T("البرامج", "Programs")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="P02 · P03" Title="@T("البرامج", "Programs")" Subtitle="@T("البرنامج وعاء تنظيمي للمشاريع؛ إجمالياته تأتي من مشاريعه فقط ولا يُحصل عليه مباشرة.", "A program groups projects; its totals come only from its projects and it is never collected on directly.")">
+        <Actions>@if (Can(Perm.ProgramsManage)) { <button class="primary-btn" @onclick="New"><Icon Name="plus" />@T("برنامج جديد", "New program")</button> }</Actions>
+    </PageHeader>
+    <section class="data-card">
+        <div class="toolbar"><div class="search-field"><Icon Name="search" /><input @bind="_q" @bind:event="oninput" @bind:after="Reload" placeholder="@T("ابحث باسم البرنامج أو المشروع أو الرمز…", "Search program, project or code…")" /></div></div>
+        <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+            <div class="table-wrap"><table>
+                <thead><tr><th>@T("البرنامج", "Program")</th><th>@T("المركز", "Center")</th><th>@T("المشاريع", "Projects")</th><th class="num">@T("الميزانية المعتمدة", "Approved budget")</th><th class="num">@T("موزع على المشاريع", "Allocated")</th><th class="num">@T("احتياطي غير موزع", "Reserve")</th><th class="num">@T("صافي المؤكد", "Confirmed net")</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var p in _items)
+                    {
+                        <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/projects/programs/{p.Id}"))">
+                            <td><strong>@Ui.N(p.NameAr, p.NameEn)</strong><span dir="ltr">@p.Code @(p.IsStandalone ? T("· مشروع مستقل", "· standalone") : "")</span></td>
+                            <td>@Ui.N(p.CenterAr, p.CenterEn)</td>
+                            <td>@p.ProjectCount</td>
+                            <td class="num"><Money Value="p.ApprovedBudget" Currency="@p.Currency" /></td>
+                            <td class="num"><Money Value="p.AllocatedToProjects" ShowCurrency="false" /></td>
+                            <td class="num"><Money Value="p.UnallocatedReserve" ShowCurrency="false" /></td>
+                            <td class="num"><Money Value="p.Confirmed" ShowCurrency="false" /></td>
+                            <td>@if (p.IsClosed) { <StatusPill Css="neutral">@T("مغلق", "Closed")</StatusPill> }</td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </PageState>
+    </section>
+</div>
+<ProgramEditor @bind-Open="_open" Model="_model" Centers="_centers" OnSave="Save" Busy="Busy" />
+@code {
+    [SupplyParameterFromQuery(Name = "new")] public int? NewQuery { get; set; }
+    private List<ProgramRow> _items = [];
+    private List<Center> _centers = [];
+    private string _q = "";
+    private bool _open;
+    private ProgramInput _model = new();
+
+    protected override async Task LoadAsync()
+    {
+        _items = await S<ProjectService>().ListProgramsAsync(_q);
+        _centers = await S<AdminService>().CentersAsync();
+        if (NewQuery == 1 && !_open && Can(Perm.ProgramsManage)) { NewQuery = null; New(); }
+    }
+    private void New() { _model = new ProgramInput { CenterId = Me.CenterId ?? _centers.FirstOrDefault()?.Id ?? 0 }; _open = true; }
+    private async Task Save()
+    {
+        var id = 0;
+        if (await Run(async () => id = await S<ProjectService>().SaveProgramAsync(_model), "تم حفظ البرنامج", "Program saved", reload: false)) { _open = false; Nav.NavigateTo($"/projects/programs/{id}"); }
+    }
+}

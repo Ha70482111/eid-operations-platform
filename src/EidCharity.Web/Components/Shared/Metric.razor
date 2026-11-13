@@ -1,0 +1,18 @@
+@inject Ui Ui
+<div class="metric">
+    <div class="metric-icon @(Warn ? "warn" : "")"><Icon Name="@IconName" /></div>
+    <div>
+        <span>@Label</span>
+        <strong>@Value @if (Currency) { <small>@Ui.Cur</small> }</strong>
+        <p>@if (!string.IsNullOrEmpty(Delta)) { <b>@Delta</b> }@Note</p>
+    </div>
+</div>
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string? Note { get; set; }
+    [Parameter] public string? Delta { get; set; }
+    [Parameter] public string IconName { get; set; } = "banknote";
+    [Parameter] public bool Warn { get; set; }
+    [Parameter] public bool Currency { get; set; } = true;
+}

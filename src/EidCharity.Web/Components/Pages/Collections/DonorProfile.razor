@@ -1,0 +1,84 @@
+@page "/collections/donors/{Id:int}"
+@attribute [Authorize(Policy = Perm.DonorsView)]
+@inherits EidPage
+
+<PageTitle>@T("ملف المتبرع", "Donor profile")</PageTitle>
+<div class="page">
+    <PageState Loading="Loading" Error="@Error">
+        @if (_p is not null)
+        {
+            var d = _p.Donor;
+            <PageHeader Eyebrow="@($"C08 · {d.Number}")" Title="@d.DisplayName(Ui.IsAr)" Subtitle="@(d.Type == DonorType.Organization ? $"{T("جهة", "Organization")} · {d.OrganizationType}" : T("متبرع فرد", "Individual donor"))">
+                <Actions>
+                    @if (Can(Perm.DonorsManage)) { <a class="secondary-btn" href="/collections/donors/@d.Id/edit"><Icon Name="pencil-line" />@T("تعديل", "Edit")</a> }
+                    @if (Can(Perm.AgreementsManage)) { <a class="secondary-btn" href="/collections/agreements/new?donor=@d.Id"><Icon Name="file-check-2" />@T("اتفاقية جديدة", "New agreement")</a> }
+                </Actions>
+            </PageHeader>
+            @if (d.MergedIntoDonorId is not null)
+            {
+                <div class="notice-box warn"><Icon Name="git-merge" />@T("هذا السجل مدمج في سجل آخر.", "This record was merged into another.") <a class="link-btn" href="/collections/donors/@d.MergedIntoDonorId">@T("فتح السجل الأساسي", "Open primary record")</a></div>
+            }
+            <section class="metric-strip">
+                <Metric Label="@T("إجمالي المؤكد (صافي)", "Confirmed (net)")" Value="@Ui.Money(_p.ConfirmedTotal)" IconName="badge-check" />
+                <Metric Label="@T("عدد العمليات", "Transactions")" Value="@_p.Transactions.ToString()" Currency="false" IconName="receipt-text" />
+                <Metric Label="@T("الاتفاقيات", "Agreements")" Value="@_p.Agreements.Count.ToString()" Currency="false" Note="@T($"المتبقي {Ui.Money(_p.Agreements.Where(a => a.Status == AgreementStatus.Active).Sum(a => a.Remaining))}", $"Remaining {Ui.Money(_p.Agreements.Where(a => a.Status == AgreementStatus.Active).Sum(a => a.Remaining))}")" IconName="file-check-2" />
+                <Metric Label="@T("التعهدات المفتوحة", "Open pledges")" Value="@Ui.Money(_p.Pledges.Where(x => x.Status is PledgeStatus.Open or PledgeStatus.PartiallyFulfilled).Sum(x => x.Amount - x.FulfilledAmount))" IconName="heart" />
+            </section>
+            <div class="grid-2">
+                <section class="data-card">
+                    <div class="card-head"><div><h2>@T("بيانات التواصل", "Contact")</h2></div></div>
+                    <div class="kv">
+                        <div><span>@T("الهاتف", "Phone")</span><strong dir="ltr">@(d.Phone is null ? "—" : $"{d.CountryCode} {d.Phone}")</strong></div>
+                        <div><span>@T("البريد", "Email")</span><strong dir="ltr">@(d.Email ?? "—")</strong></div>
+                        <div><span>@T("الدولة", "Country")</span><strong>@(d.Country ?? "—")</strong></div>
+                        <div><span>@T("الموافقة على المراسلات", "Marketing consent")</span><strong>@(d.MarketingConsent ? T("نعم", "Yes") : T("لا", "No"))</strong></div>
+                        @if (d.RegistrationNumber is not null) { <div><span>@T("السجل التجاري", "Registration")</span><strong dir="ltr">@d.RegistrationNumber</strong></div> }
+                    </div>
+                    @if (d.Representatives.Count > 0)
+                    {
+                        <div class="table-wrap"><table>
+                            <thead><tr><th>@T("الممثل", "Representative")</th><th>@T("التواصل", "Contact")</th><th>@T("التوقيع", "Signing")</th></tr></thead>
+                            <tbody>@foreach (var r in d.Representatives) { <tr><td><strong>@r.Name</strong><span>@r.Title</span></td><td dir="ltr">@r.Phone @r.Email</td><td>@(r.CanSign ? T("مفوض", "Authorized") : "—")</td></tr> }</tbody>
+                        </table></div>
+                    }
+                </section>
+                <section class="data-card">
+                    <div class="card-head"><div><h2>@T("آخر العمليات", "Recent transactions")</h2></div></div>
+                    @if (_p.Recent.Count == 0) { <div class="empty-hint">@T("لا توجد عمليات", "No transactions")</div> }
+                    <div class="table-wrap"><table><tbody>
+                        @foreach (var x in _p.Recent)
+                        {
+                            <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/collections/transactions/{x.Id}"))">
+                                <td><strong dir="ltr">@x.Number</strong><span dir="ltr">@x.Receipt?.Number</span></td>
+                                <td class="num"><Money Value="x.Total" /></td>
+                                <td><StatusPill Tone="StatusText.Of(x.Status)" /></td>
+                                <td dir="ltr">@Ui.Date(x.OccurredAt)</td>
+                            </tr>
+                        }
+                    </tbody></table></div>
+                </section>
+            </div>
+            @if (_p.Agreements.Count > 0)
+            {
+                <section class="data-card mt">
+                    <div class="card-head"><div><h2>@T("الاتفاقيات", "Agreements")</h2></div></div>
+                    <div class="table-wrap"><table><tbody>
+                        @foreach (var a in _p.Agreements)
+                        {
+                            <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/collections/agreements/{a.Id}"))">
+                                <td><strong dir="ltr">@a.Number</strong><span>@Ui.Date(a.Date)</span></td>
+                                <td class="num"><Money Value="a.Total" /><span>@T("محصل", "Collected") @Ui.Money(a.Collected)</span></td>
+                                <td><StatusPill Tone="StatusText.Of(a.Status)" /></td>
+                            </tr>
+                        }
+                    </tbody></table></div>
+                </section>
+            }
+        }
+    </PageState>
+</div>
+@code {
+    [Parameter] public int Id { get; set; }
+    private DonorService.DonorProfile? _p;
+    protected override async Task LoadAsync() => _p = await S<DonorService>().ProfileAsync(Id);
+}

@@ -1,0 +1,74 @@
+@page "/collections/transactions"
+@inherits EidPage
+
+<PageTitle>@T("العمليات والسندات", "Transactions & receipts")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C13" Title="@T("العمليات والسندات", "Transactions & receipts")"
+                Subtitle="@T("كل عملية بسند واحد. ابحث برقم العملية أو السند أو المتبرع أو مرجع الدفع.", "One receipt per transaction. Search by transaction, receipt, donor or payment reference.")" />
+    <section class="data-card">
+        <div class="toolbar">
+            <div class="search-field"><Icon Name="search" /><input @bind="_search" @bind:event="oninput" @bind:after="Search" placeholder="@T("بحث…", "Search…")" /></div>
+            <select class="input" style="width:auto" @bind="_status" @bind:after="Search">
+                <option value="">@T("كل الحالات", "All statuses")</option>
+                @foreach (var s in Enum.GetValues<DonationStatus>().Where(s => s != DonationStatus.Draft))
+                {
+                    <option value="@s">@T(StatusText.Of(s).Ar, StatusText.Of(s).En)</option>
+                }
+            </select>
+            <select class="input" style="width:auto" @bind="_method" @bind:after="Search">
+                <option value="">@T("كل الطرق", "All methods")</option>
+                @foreach (var m in Enum.GetValues<PaymentMethod>())
+                {
+                    <option value="@m">@T(StatusText.Of(m).Ar, StatusText.Of(m).En)</option>
+                }
+            </select>
+            @if (Can(Perm.DonationsViewAll))
+            {
+                <label class="check"><input type="checkbox" @bind="_mine" @bind:after="Search" />@T("عملياتي فقط", "Mine only")</label>
+            }
+        </div>
+        <PageState Loading="Loading" Error="@Error" Empty="@(_page?.Items.Count == 0)">
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>@T("العملية / السند", "Transaction / receipt")</th><th>@T("المتبرع", "Donor")</th><th>@T("المشاريع", "Projects")</th><th>@T("الطريقة", "Method")</th><th class="num">@T("المبلغ", "Amount")</th><th>@T("الحالة", "Status")</th><th>@T("التاريخ", "Date")</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var d in _page!.Items)
+                        {
+                            <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/collections/transactions/{d.Id}"))">
+                                <td><strong dir="ltr">@d.Number</strong><span dir="ltr">@(d.Receipt?.Number ?? "—")</span></td>
+                                <td>@(d.Donor?.DisplayName(Ui.IsAr) ?? "—")<span>@d.CollectorName</span></td>
+                                <td>@string.Join("، ", d.Lines.Select(l => Ui.N(l.ProjectNameAr, l.ProjectNameEn)).Distinct())</td>
+                                <td>@T(StatusText.Of(d.PaymentMethod).Ar, StatusText.Of(d.PaymentMethod).En)</td>
+                                <td class="num"><Money Value="d.Total" Currency="@d.Currency" />@if (d.RefundedAmount > 0) { <span>@T("مسترد", "Refunded") @Ui.Money(d.RefundedAmount)</span> }</td>
+                                <td><StatusPill Tone="StatusText.Of(d.Status)" /></td>
+                                <td dir="ltr">@Ui.DateTimeStr(d.OccurredAt)</td>
+                                <td class="actions">@if (d.Receipt is not null) { <a class="icon-btn sm" href="/collections/receipts/@d.Receipt.Id" @onclick:stopPropagation="true" title="@T("السند", "Receipt")"><Icon Name="printer" /></a> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="_pageNo" Total="@(_page?.Total ?? 0)" PageChanged="GoTo" />
+        </PageState>
+    </section>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "mine")] public int? MineQuery { get; set; }
+    private PagedResult<Donation>? _page;
+    private string _search = "";
+    private DonationStatus? _status;
+    private PaymentMethod? _method;
+    private bool _mine;
+    private int _pageNo = 1;
+    private bool _init;
+
+    protected override async Task LoadAsync()
+    {
+        if (!_init) { _mine = MineQuery == 1; _init = true; }
+        _page = await S<DonationService>().ListAsync(_search, _status, _method, _mine, _pageNo);
+    }
+
+    private async Task Search() { _pageNo = 1; await Reload(); }
+    private async Task GoTo(int p) { _pageNo = p; await Reload(); }
+}

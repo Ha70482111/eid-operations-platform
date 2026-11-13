@@ -1,0 +1,49 @@
+@page "/collections/donors"
+@attribute [Authorize(Policy = Perm.DonorsView)]
+@inherits EidPage
+
+<PageTitle>@T("المتبرعون", "Donors")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C05 · C06" Title="@T("المتبرعون", "Donors")" Subtitle="@T("سجل موحد للأفراد والجهات مع كشف التكرار قبل الإنشاء والدمج بصلاحية خاصة.", "Unified register of individuals and organizations with duplicate detection and controlled merging.")">
+        <Actions>
+            @if (Can(Perm.DonorsMerge)) { <a class="secondary-btn" href="/collections/donors/merge"><Icon Name="git-merge" />@T("دمج سجلات", "Merge records")</a> }
+            @if (Can(Perm.DonorsManage)) { <a class="primary-btn" href="/collections/donors/new"><Icon Name="user-plus" />@T("متبرع جديد", "New donor")</a> }
+        </Actions>
+    </PageHeader>
+    <section class="data-card">
+        <div class="toolbar">
+            <div class="search-field"><Icon Name="search" /><input @bind="_q" @bind:event="oninput" @bind:after="Reload" placeholder="@T("الاسم، الهاتف، البريد، الهوية، السجل التجاري، رقم المتبرع…", "Name, phone, email, ID, registration, donor no…")" /></div>
+            <div class="chips">
+                <button class="chip @(_type is null ? "active" : "")" @onclick="() => SetType(null)">@T("الكل", "All")</button>
+                <button class="chip @(_type == DonorType.Individual ? "active" : "")" @onclick="() => SetType(DonorType.Individual)">@T("أفراد", "Individuals")</button>
+                <button class="chip @(_type == DonorType.Organization ? "active" : "")" @onclick="() => SetType(DonorType.Organization)">@T("جهات", "Organizations")</button>
+            </div>
+        </div>
+        <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>@T("المتبرع", "Donor")</th><th>@T("النوع", "Type")</th><th>@T("التواصل", "Contact")</th><th>@T("الخصوصية", "Privacy")</th><th>@T("أُضيف", "Added")</th></tr></thead>
+                    <tbody>
+                        @foreach (var d in _items)
+                        {
+                            <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/collections/donors/{d.Id}"))">
+                                <td><strong>@d.DisplayName(Ui.IsAr)</strong><span dir="ltr">@d.Number</span></td>
+                                <td>@(d.Type == DonorType.Organization ? T("جهة", "Organization") : T("فرد", "Individual"))</td>
+                                <td><span dir="ltr">@(d.Phone is null ? "" : $"{d.CountryCode} {d.Phone}")</span><span dir="ltr">@d.Email</span></td>
+                                <td>@(d.Privacy switch { DonorPrivacy.Unknown => T("مجهول", "Unknown"), DonorPrivacy.KnownButHidden => T("فاعل خير", "Benefactor"), _ => T("ظاهر", "Named") })</td>
+                                <td dir="ltr">@Ui.Date(d.CreatedAt)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </PageState>
+    </section>
+</div>
+@code {
+    private List<Donor> _items = [];
+    private string _q = "";
+    private DonorType? _type;
+    protected override async Task LoadAsync() => _items = await S<DonorService>().SearchAsync(_q, _type, 100);
+    private async Task SetType(DonorType? t) { _type = t; await Reload(); }
+}

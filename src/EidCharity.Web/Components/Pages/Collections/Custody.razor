@@ -1,0 +1,68 @@
+@page "/collections/custody"
+@attribute [Authorize(Policy = Perm.CustodyHandover + "," + Perm.CustodyConfirm)]
+@inherits EidPage
+
+<PageTitle>@T("العهدة والتسليم", "Custody & handover")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C21" Title="@T("العهدة النقدية والتسليم", "Cash custody & handover")" Subtitle="@T("التسليم للخزينة أو الإيداع البنكي نقل لنفس المال وليس تحصيلًا جديدًا. أي فرق يجب توثيق سببه قبل الإقفال.", "Handover to treasury or bank deposit moves the same money; it is not a new collection. Any difference must be documented before closing.")" />
+    @if (Can(Perm.CustodyHandover) && Can(Perm.CustodyConfirm))
+    {
+        <div class="tabs">
+            <button class="@(_mine ? "active" : "")" @onclick="() => SetMine(true)">@T("عهدتي", "My custody")</button>
+            <button class="@(!_mine ? "active" : "")" @onclick="() => SetMine(false)">@T("استلام العهد", "Receive custodies")</button>
+        </div>
+    }
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)" EmptyAr="لا توجد عهد" EmptyEn="No custodies">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("العهدة", "Custody")</th><th>@T("المحصّل", "Collector")</th><th>@T("السندات", "Receipts")</th><th class="num">@T("المتوقع", "Expected")</th><th class="num">@T("المسلّم", "Handed over")</th><th class="num">@T("الفرق", "Difference")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var (c, expected, receipts) in _items)
+                {
+                    <tr>
+                        <td><strong dir="ltr">@c.Number</strong><span>@T("فُتحت", "Opened") @Ui.DateTimeStr(c.OpenedAt)</span></td>
+                        <td>@c.CollectorName</td>
+                        <td>@receipts</td>
+                        <td class="num"><Money Value="expected" /></td>
+                        <td class="num"><Money Value="c.HandedOverAmount" ShowCurrency="false" />@if (c.HandoverType is not null) { <span>@(c.HandoverType == HandoverType.BankDeposit ? T("إيداع بنكي", "Bank deposit") : T("خزينة", "Treasury")) @c.DepositReference</span> }</td>
+                        <td class="num"><Money Value="c.Difference" ShowCurrency="false" />@if (!string.IsNullOrEmpty(c.DifferenceReason)) { <span>@c.DifferenceReason</span> }</td>
+                        <td><StatusPill Tone="StatusText.Of(c.Status)" /></td>
+                        <td class="actions">
+                            @if (_mine && c.Status == CustodyStatus.Open && expected > 0) { <button class="primary-btn btn-sm" @onclick="() => OpenHandover(c, expected)"><Icon Name="send" />@T("تسليم", "Hand over")</button> }
+                            @if (!_mine && c.Status == CustodyStatus.HandedOver) { <button class="primary-btn btn-sm" disabled="@Busy" @onclick="() => Confirm(c.Id)"><Icon Name="circle-check" />@T("تأكيد الاستلام", "Confirm receipt")</button> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal @bind-Open="_open" Title="@T("تسليم العهدة", "Hand over custody")">
+    <ChildContent>
+        <div class="notice-box"><Icon Name="info" />@T($"المبلغ المتوقع حسب السندات النقدية المؤكدة: {Ui.Money(_expected)} ر.ق", $"Expected from confirmed cash receipts: QAR {Ui.Money(_expected)}")</div>
+        <div class="form-grid">
+            <div class="field"><label>@T("طريقة التسليم", "Handover type")</label>
+                <select @bind="_type"><option value="@HandoverType.Treasury">@T("خزينة المؤسسة", "Foundation treasury")</option><option value="@HandoverType.BankDeposit">@T("إيداع بنكي", "Bank deposit")</option></select></div>
+            <div class="field"><label class="req">@T("المبلغ المسلّم", "Amount handed over")</label><input type="number" step="0.01" @bind="_amount" dir="ltr" /></div>
+            @if (_type == HandoverType.BankDeposit) { <div class="field full"><label class="req">@T("مرجع الإيداع", "Deposit reference")</label><input @bind="_ref" dir="ltr" /></div> }
+            @if (_amount != _expected) { <div class="field full"><label class="req">@T("سبب الفرق", "Difference reason")</label><textarea @bind="_reason"></textarea></div> }
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Handover">@T("تأكيد التسليم", "Confirm handover")</button></Footer>
+</Modal>
+@code {
+    private List<(CollectorCustody Custody, decimal Expected, int Receipts)> _items = [];
+    private bool _mine = true, _open;
+    private int _id; private decimal _expected, _amount;
+    private HandoverType _type = HandoverType.Treasury;
+    private string? _ref, _reason;
+
+    protected override async Task LoadAsync()
+    {
+        if (!Can(Perm.CustodyHandover)) _mine = false;
+        _items = await S<CustodyService>().ListAsync(_mine);
+    }
+    private async Task SetMine(bool m) { _mine = m; await Reload(); }
+    private void OpenHandover(CollectorCustody c, decimal expected) { _id = c.Id; _expected = expected; _amount = expected; _ref = null; _reason = null; _open = true; }
+    private async Task Handover() { if (await Run(() => S<CustodyService>().HandoverAsync(_id, _amount, _type, _ref, _reason), "تم تسليم العهدة — بانتظار تأكيد المستلم", "Handed over — awaiting receiver confirmation")) _open = false; }
+    private Task Confirm(int id) => Run(() => S<CustodyService>().ConfirmAsync(id, null), "تم تأكيد الاستلام وإقفال العهدة", "Receipt confirmed; custody closed");
+}

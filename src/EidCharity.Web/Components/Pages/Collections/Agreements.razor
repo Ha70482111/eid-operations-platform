@@ -1,0 +1,46 @@
+@page "/collections/agreements"
+@attribute [Authorize(Policy = Perm.AgreementsManage + "," + Perm.AgreementsApprove)]
+@inherits EidPage
+
+<PageTitle>@T("الاتفاقيات والدفعات", "Agreements & installments")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C17 · C18" Title="@T("الاتفاقيات والدفعات", "Agreements & installments")" Subtitle="@T("التعهد نية، والاتفاقية شروط موثقة، والسند لكل مبلغ مستلم. تُربط الاتفاقية بالمشاريع لا بالبرامج.", "A pledge is an intent, an agreement documents terms, and a receipt covers each amount received. Agreements link to projects, not programs.")">
+        <Actions>@if (Can(Perm.AgreementsManage)) { <a class="primary-btn" href="/collections/agreements/new"><Icon Name="plus" />@T("اتفاقية جديدة", "New agreement")</a> }</Actions>
+    </PageHeader>
+    <div class="tabs">
+        <button class="@(_status is null ? "active" : "")" @onclick="() => SetStatus(null)">@T("الكل", "All")</button>
+        @foreach (var s in new[] { AgreementStatus.Draft, AgreementStatus.UnderReview, AgreementStatus.AwaitingSignature, AgreementStatus.Active, AgreementStatus.Completed, AgreementStatus.Cancelled })
+        {
+            <button class="@(_status == s ? "active" : "")" @onclick="() => SetStatus(s)">@T(StatusText.Of(s).Ar, StatusText.Of(s).En)</button>
+        }
+    </div>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card">
+            <div class="table-wrap"><table>
+                <thead><tr><th>@T("الاتفاقية", "Agreement")</th><th>@T("المتبرع", "Donor")</th><th>@T("المشاريع", "Projects")</th><th class="num">@T("الإجمالي", "Total")</th><th class="num">@T("المحصّل", "Collected")</th><th>@T("الدفعات", "Installments")</th><th>@T("الحالة", "Status")</th></tr></thead>
+                <tbody>
+                    @foreach (var a in _items)
+                    {
+                        var today = DateOnly.FromDateTime(QatarTime.Now);
+                        var overdue = a.Installments.Count(i => i.Compute(today) == InstallmentStatus.Overdue);
+                        <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/collections/agreements/{a.Id}"))">
+                            <td><strong dir="ltr">@a.Number</strong><span>@Ui.Date(a.Date) · v@(a.Version)</span></td>
+                            <td>@a.Donor?.DisplayName(Ui.IsAr)</td>
+                            <td>@string.Join("، ", a.Lines.Select(l => Ui.N(l.ProjectNameAr, l.ProjectNameEn)))</td>
+                            <td class="num"><Money Value="a.Total" Currency="@a.Currency" /></td>
+                            <td class="num"><Money Value="a.Collected" ShowCurrency="false" /><span>@T("المتبقي", "Remaining") @Ui.Money(a.Remaining)</span></td>
+                            <td>@a.Installments.Count(i => i.PaidAmount >= i.Amount)/@a.Installments.Count @if (overdue > 0) { <StatusPill Css="danger">@T($"{overdue} متأخرة", $"{overdue} overdue")</StatusPill> }</td>
+                            <td><StatusPill Tone="StatusText.Of(a.Status)" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </section>
+    </PageState>
+</div>
+@code {
+    private List<Agreement> _items = [];
+    private AgreementStatus? _status;
+    protected override async Task LoadAsync() => _items = await S<AgreementService>().ListAsync(_status);
+    private async Task SetStatus(AgreementStatus? s) { _status = s; await Reload(); }
+}

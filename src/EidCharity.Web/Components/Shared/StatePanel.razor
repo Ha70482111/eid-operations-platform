@@ -1,0 +1,17 @@
+@inject Ui Ui
+<div class="state-card state-inline">
+    <div class="state-demo @Kind">
+        <Icon Name="@(Kind switch { "success" => "circle-check", "error" => "circle-x", "locked" => "lock-keyhole", "loading" => "refresh-cw", _ => "database" })" Size="26" />
+    </div>
+    <strong>@Ui.T(TitleAr, TitleEn)</strong>
+    @if (!string.IsNullOrEmpty(TextAr)) { <span>@Ui.T(TextAr, TextEn ?? TextAr)</span> }
+    @ChildContent
+</div>
+@code {
+    [Parameter] public string Kind { get; set; } = "empty";
+    [Parameter] public string TitleAr { get; set; } = "";
+    [Parameter] public string TitleEn { get; set; } = "";
+    [Parameter] public string? TextAr { get; set; }
+    [Parameter] public string? TextEn { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

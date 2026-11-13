@@ -1,0 +1,91 @@
+@page "/admin/delegations"
+@attribute [Authorize(Policy = Perm.AdminDelegations)]
+@inherits EidPage
+
+<PageTitle>@T("التفويضات", "Delegations")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="A5" Title="@T("تفويض الاعتماد", "Approval delegations")" Subtitle="@T("تفويض مؤقت لصلاحية الاعتماد من مستخدم لآخر لمدة محددة وسبب موثّق، مثل الإجازات.", "Temporary delegation of approval authority between users for a fixed period with a documented reason, e.g. leave.")">
+        <Actions><button class="primary-btn" @onclick="New"><Icon Name="plus" />@T("تفويض جديد", "New delegation")</button></Actions>
+    </PageHeader>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)" EmptyAr="لا توجد تفويضات" EmptyEn="No delegations">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("من", "From")</th><th>@T("إلى", "To")</th><th>@T("العملية", "Operation")</th><th>@T("الفترة", "Period")</th><th>@T("السبب", "Reason")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var d in _items)
+                {
+                    var st = State(d);
+                    <tr>
+                        <td>@UserName(d.FromUserId)</td><td>@UserName(d.ToUserId)</td>
+                        <td>@T(StatusText.Module(d.Module).Ar, StatusText.Module(d.Module).En)</td>
+                        <td dir="ltr">@Ui.Date(d.FromDate) → @Ui.Date(d.ToDate)</td>
+                        <td>@d.Reason</td>
+                        <td><StatusPill Css="@st.Css">@T(st.Ar, st.En)</StatusPill></td>
+                        <td class="actions">
+                            @if (!d.IsRevoked && d.ToDate > DateTime.UtcNow)
+                            {
+                                <button class="danger-btn btn-sm" disabled="@Busy" @onclick="() => Revoke(d.Id)"><Icon Name="ban" />@T("إلغاء", "Revoke")</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal @bind-Open="_open" Title="@T("تفويض جديد", "New delegation")">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field"><label class="req">@T("المفوِّض", "From user")</label>
+                <select @bind="_d.FromUserId"><option value="">—</option>@foreach (var u in _users) { <option value="@u.Id">@Ui.N(u.NameAr, u.NameEn)</option> }</select></div>
+            <div class="field"><label class="req">@T("المفوَّض إليه", "To user")</label>
+                <select @bind="_d.ToUserId"><option value="">—</option>@foreach (var u in _users) { <option value="@u.Id">@Ui.N(u.NameAr, u.NameEn)</option> }</select></div>
+            <div class="field"><label class="req">@T("نوع العملية", "Operation")</label>
+                <select @bind="_d.Module">@foreach (var m in Enum.GetValues<ApprovalModule>()) { <option value="@m">@T(StatusText.Module(m).Ar, StatusText.Module(m).En)</option> }</select></div>
+            <div></div>
+            <div class="field"><label class="req">@T("من تاريخ", "From date")</label><input type="date" @bind="_from" /></div>
+            <div class="field"><label class="req">@T("إلى تاريخ", "To date")</label><input type="date" @bind="_to" /></div>
+        </div>
+        <div class="field"><label class="req">@T("السبب", "Reason")</label><textarea rows="2" @bind="_d.Reason"></textarea></div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Save">@T("حفظ", "Save")</button></Footer>
+</Modal>
+@code {
+    private List<Delegation> _items = [];
+    private List<AdminService.LookupItem> _users = [];
+    private Delegation _d = new();
+    private DateOnly _from, _to;
+    private bool _open;
+
+    protected override async Task LoadAsync()
+    {
+        var a = S<AdminService>();
+        _items = await a.DelegationsAsync();
+        if (_users.Count == 0) _users = await a.UserLookupAsync();
+    }
+
+    private string UserName(string id) => _users.FirstOrDefault(u => u.Id == id) is { } u ? Ui.N(u.NameAr, u.NameEn) : "—";
+
+    private Tone State(Delegation d) =>
+        d.IsRevoked ? new("neutral", "ملغى", "Revoked")
+        : d.ToDate <= DateTime.UtcNow ? new("neutral", "منتهٍ", "Expired")
+        : d.FromDate > DateTime.UtcNow ? new("warning", "مجدول", "Scheduled")
+        : new("success", "ساري", "Active");
+
+    private void New()
+    {
+        var today = DateOnly.FromDateTime(QatarTime.ToLocal(DateTime.UtcNow));
+        _d = new Delegation { Module = ApprovalModule.Disbursement };
+        _from = today; _to = today.AddDays(7);
+        _open = true;
+    }
+
+    private async Task Save()
+    {
+        // Dates are entered in Qatar local time; the period covers the whole "to" day.
+        _d.FromDate = QatarTime.ToUtc(_from.ToDateTime(TimeOnly.MinValue));
+        _d.ToDate = QatarTime.ToUtc(_to.AddDays(1).ToDateTime(TimeOnly.MinValue));
+        if (await Run(() => S<AdminService>().SaveDelegationAsync(_d), "تم إنشاء التفويض", "Delegation created")) _open = false;
+    }
+
+    private Task Revoke(int id) => Run(() => S<AdminService>().RevokeDelegationAsync(id), "تم إلغاء التفويض", "Delegation revoked");
+}

@@ -1,0 +1,48 @@
+@page "/projects/list"
+@attribute [Authorize(Policy = Perm.ProjectsView)]
+@inherits EidPage
+
+<PageTitle>@T("المشاريع", "Projects")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="P05 · P06" Title="@T("المشاريع", "Projects")" Subtitle="@T("لكل مشروع ثلاث حالات مستقلة: الاعتماد المالي، والتحصيل، والتنفيذ.", "Each project has three independent statuses: finance approval, collection and execution.")">
+        <Actions>@if (Can(Perm.ProjectsCreateLicensed)) { <a class="primary-btn" href="/projects/new"><Icon Name="plus" />@T("مشروع جديد", "New project")</a> }</Actions>
+    </PageHeader>
+    <section class="data-card">
+        <div class="toolbar">
+            <div class="search-field"><Icon Name="search" /><input @bind="_q" @bind:event="oninput" @bind:after="Search" placeholder="@T("ابحث بالاسم أو الرمز أو البرنامج…", "Search name, code or program…")" /></div>
+            <select class="input" style="width:auto" @bind="_approval" @bind:after="Search">
+                <option value="">@T("كل حالات الاعتماد", "All approval statuses")</option>
+                @foreach (var s in Enum.GetValues<ApprovalStatus>()) { <option value="@s">@T(StatusText.Of(s).Ar, StatusText.Of(s).En)</option> }
+            </select>
+        </div>
+        <PageState Loading="Loading" Error="@Error" Empty="@(_page?.Items.Count == 0)">
+            <div class="table-wrap"><table>
+                <thead><tr><th>@T("المشروع", "Project")</th><th>@T("البرنامج / المركز", "Program / center")</th><th>@T("الاعتماد", "Approval")</th><th>@T("التحصيل", "Collection")</th><th>@T("التنفيذ", "Execution")</th><th>@T("الربط", "Sync")</th><th class="num">@T("سقف التحصيل", "Cap")</th></tr></thead>
+                <tbody>
+                    @foreach (var p in _page!.Items)
+                    {
+                        <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/projects/{p.Id}"))">
+                            <td><strong>@Ui.N(p.NameAr, p.NameEn)</strong><span dir="ltr">@p.Code @(p.HasPendingChanges ? "· ✱" : "")</span></td>
+                            <td>@Ui.N(p.ProgramNameAr, p.ProgramNameEn)<span>@Ui.N(p.CenterAr, p.CenterEn)</span></td>
+                            <td><StatusPill Tone="StatusText.Of(p.Approval)" /></td>
+                            <td><StatusPill Tone="StatusText.Of(p.Collection)" /></td>
+                            <td><StatusPill Tone="StatusText.Of(p.Execution)" /></td>
+                            <td><StatusPill Tone="StatusText.Of(p.Sync)" /></td>
+                            <td class="num"><Money Value="p.CollectionCap" Currency="@p.Currency" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+            <Pager Page="_pageNo" Total="@(_page?.Total ?? 0)" PageChanged="GoTo" />
+        </PageState>
+    </section>
+</div>
+@code {
+    private PagedResult<ProjectRow>? _page;
+    private string _q = "";
+    private ApprovalStatus? _approval;
+    private int _pageNo = 1;
+    protected override async Task LoadAsync() => _page = await S<ProjectService>().ListProjectsAsync(_q, _approval, null, _pageNo);
+    private async Task Search() { _pageNo = 1; await Reload(); }
+    private async Task GoTo(int p) { _pageNo = p; await Reload(); }
+}

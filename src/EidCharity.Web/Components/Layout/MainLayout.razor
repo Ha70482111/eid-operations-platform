@@ -1,0 +1,215 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject Ui Ui
+@inject CurrentUser Me
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IServiceScopeFactory Scopes
+
+<div class="app-root" dir="@Ui.Dir">
+    <aside class="sidebar @(_menu ? "sidebar-open" : "")">
+        <a class="brand" href="/">
+            <div class="brand-mark"><img src="eid-charity-logo.png" alt="@Ui.T("شعار مؤسسة عيد الخيرية", "Eid Charity logo")" /></div>
+            <div><span>@Ui.T("منصة العمليات — المشاريع الداخلية والتحصيل", "Operations platform — Internal projects & collections")</span></div>
+        </a>
+        <nav class="main-nav" aria-label="@Ui.T("التنقل الرئيسي", "Primary navigation")">
+            @foreach (var section in Sections)
+            {
+                var visible = section.Links.Where(l => l.Perms.Length == 0 || l.Perms.Any(Me.Has)).ToList();
+                if (visible.Count == 0) continue;
+                <div class="nav-label">@Ui.T(section.Ar, section.En)</div>
+                @foreach (var l in visible)
+                {
+                    <NavLink href="@l.Href" Match="@(l.Exact ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="() => _menu = false">
+                        <Icon Name="@l.Icon" /><span>@Ui.T(l.Ar, l.En)</span>
+                    </NavLink>
+                }
+            }
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-card">
+                <div class="avatar">@Initials</div>
+                <div>
+                    <strong>@(Ui.IsAr ? Me.DisplayName : Me.DisplayNameEn)</strong>
+                    <span dir="ltr">@Me.UserName</span>
+                </div>
+                <form method="post" action="/account/logout" data-enhance="false">
+                    <AntiforgeryToken />
+                    <button type="submit" class="logout" title="@Ui.T("تسجيل الخروج", "Sign out")" aria-label="@Ui.T("تسجيل الخروج", "Sign out")"><Icon Name="log-out" Size="16" /></button>
+                </form>
+            </div>
+        </div>
+    </aside>
+    <div class="sidebar-backdrop @(_menu ? "on" : "")" @onclick="() => _menu = false"></div>
+    <main class="main">
+        <header class="topbar">
+            <button class="icon-btn mobile-menu" @onclick="() => _menu = !_menu" aria-label="Menu"><Icon Name="menu" /></button>
+            <div class="context-switch">
+                <span>@Ui.T("النظام الحالي", "Current system")</span>
+                <strong>@CurrentSystem</strong>
+            </div>
+            <div class="top-actions">
+                <button class="lang-btn" @onclick="ToggleLang"><Icon Name="languages" />@(Ui.IsAr ? "English" : "العربية")</button>
+                <button class="icon-btn notice" @onclick="ToggleNotifications" aria-label="@Ui.T("التنبيهات", "Notifications")">
+                    <Icon Name="bell" />
+                    @if (_unread > 0) { <i>@(_unread > 99 ? "99+" : _unread)</i> }
+                </button>
+                @if (_showNotifications)
+                {
+                    <div class="notif-pop">
+                        <div class="card-head">
+                            <div><h2>@Ui.T("التنبيهات", "Notifications")</h2></div>
+                            @if (_unread > 0) { <button class="link-btn" @onclick="MarkRead">@Ui.T("تعليم الكل كمقروء", "Mark all read")</button> }
+                        </div>
+                        @if (_items.Count == 0)
+                        {
+                            <div class="empty-hint">@Ui.T("لا توجد تنبيهات", "No notifications")</div>
+                        }
+                        @foreach (var n in _items)
+                        {
+                            <a class="n-item @(n.IsRead ? "" : "unread")" href="@(n.Link ?? "#")" @onclick="() => _showNotifications = false">
+                                <StatusPill Css="@(n.Severity == "danger" ? "danger" : n.Severity == "warning" ? "warning" : "neutral")">@Ui.T(n.TitleAr, n.TitleEn)</StatusPill>
+                                <small>@Ui.Ago(n.At)</small>
+                            </a>
+                        }
+                    </div>
+                }
+            </div>
+        </header>
+        @Body
+    </main>
+</div>
+<ToastHost />
+
+<div id="blazor-error-ui" data-nosnippet>
+    @Ui.T("حدث خطأ غير متوقع.", "An unhandled error has occurred.")
+    <a href="." class="reload">@Ui.T("إعادة التحميل", "Reload")</a>
+    <span class="dismiss">✕</span>
+</div>
+
+@code {
+    private bool _menu, _showNotifications;
+    private int _unread;
+    private List<Notification> _items = [];
+    private Timer? _timer;
+
+    private record NavItem(string Href, string Icon, string Ar, string En, string[] Perms, bool Exact = false);
+    private record NavSection(string Ar, string En, NavItem[] Links);
+
+    private static readonly NavSection[] Sections =
+    [
+        new("نظام التحصيل", "Collections",
+        [
+            new("/collections", "hand-coins", "مساحة التحصيل", "Collections workspace", [Perm.CollectUse], true),
+            new("/collections/transactions", "receipt-text", "العمليات والسندات", "Transactions & receipts", [Perm.CollectUse, Perm.DonationsViewAll]),
+            new("/collections/pending", "clock-3", "قيد التحقق", "Pending verification", [Perm.DonationsVerify]),
+            new("/collections/donors", "users", "المتبرعون", "Donors", [Perm.DonorsView]),
+            new("/collections/pledges", "heart", "التعهدات", "Pledges", [Perm.PledgesManage]),
+            new("/collections/agreements", "file-check-2", "الاتفاقيات والدفعات", "Agreements & installments", [Perm.AgreementsManage, Perm.AgreementsApprove]),
+            new("/collections/in-kind", "package", "التبرعات العينية", "In-kind donations", [Perm.InKindManage, Perm.InKindApproveValuation]),
+            new("/collections/custody", "wallet-cards", "العهدة والتسليم", "Custody & handover", [Perm.CustodyHandover, Perm.CustodyConfirm]),
+            new("/collections/reconciliation", "scale", "المطابقة المالية", "Reconciliation", [Perm.ReconciliationManage]),
+            new("/collections/refunds", "undo-2", "الاسترداد", "Refunds", [Perm.RefundsRequest, Perm.RefundsApprove, Perm.RefundsExecute]),
+            new("/collections/reallocations", "arrow-left-right", "إعادة التخصيص", "Reallocations", [Perm.ReallocationRequest, Perm.ReallocationApprove]),
+            new("/collections/corrections", "pencil-line", "تصحيح السندات", "Receipt corrections", [Perm.ReceiptsCorrect, Perm.ReceiptsCorrectApprove]),
+            new("/collections/reports", "chart-column", "تقارير التحصيل", "Collection reports", [Perm.CollectionsReports]),
+        ]),
+        new("المشاريع الداخلية", "Internal projects",
+        [
+            new("/projects", "layout-dashboard", "لوحة المشاريع", "Projects overview", [Perm.ProjectsView], true),
+            new("/projects/programs", "folder-kanban", "البرامج", "Programs", [Perm.ProgramsView]),
+            new("/projects/list", "folder-open", "المشاريع", "Projects", [Perm.ProjectsView]),
+            new("/projects/licenses", "badge-check", "التراخيص", "Licenses", [Perm.LicensesView]),
+            new("/projects/finance", "clipboard-check", "صندوق مراجعة المالية", "Finance review inbox", [Perm.FinanceReview]),
+            new("/projects/financial-items", "book-open", "البنود المالية", "Financial items", [Perm.FinanceItemsManage]),
+            new("/projects/disbursements", "banknote", "طلبات الصرف", "Disbursements", [Perm.DisbCreate, Perm.DisbReview, Perm.DisbFinanceCheck, Perm.DisbApprove, Perm.DisbExecute]),
+            new("/projects/reports", "chart-column", "تقارير المشاريع", "Project reports", [Perm.ProjectsReports]),
+        ]),
+        new("الإدارة", "Administration",
+        [
+            new("/admin/users", "user-cog", "المستخدمون", "Users", [Perm.AdminUsers]),
+            new("/admin/roles", "shield-check", "الأدوار والصلاحيات", "Roles & permissions", [Perm.AdminRoles]),
+            new("/admin/centers", "building-2", "المراكز", "Centers", [Perm.AdminCenters]),
+            new("/admin/approval-matrix", "list-checks", "مصفوفة الاعتماد", "Approval matrix", [Perm.AdminApprovalMatrix]),
+            new("/admin/delegations", "user-check", "التفويضات", "Delegations", [Perm.AdminDelegations]),
+            new("/admin/settings", "settings", "إعدادات النظام", "System settings", [Perm.AdminSettings]),
+            new("/admin/audit", "history", "سجل الإجراءات", "Audit trail", [Perm.AuditView]),
+            new("/admin/integration", "refresh-cw", "متابعة الربط", "Integration monitor", [Perm.IntegrationMonitor]),
+        ]),
+    ];
+
+    private string Initials
+    {
+        get
+        {
+            var parts = (Ui.IsAr ? Me.DisplayName : Me.DisplayNameEn).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return string.Concat(parts.Take(2).Select(p => p[0])).ToUpperInvariant();
+        }
+    }
+
+    private string CurrentSystem
+    {
+        get
+        {
+            var path = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+            return path.StartsWith("/projects") ? Ui.T("المشاريع الداخلية", "Internal projects")
+                : path.StartsWith("/admin") ? Ui.T("الإدارة", "Administration")
+                : Ui.T("التحصيل", "Collections");
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Ui.Changed += Refresh;
+        Nav.LocationChanged += OnLocation;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) _timer = new Timer(_ => InvokeAsync(async () => { await LoadNotifications(false); StateHasChanged(); }), null, TimeSpan.Zero, TimeSpan.FromSeconds(60));
+    }
+
+    private void OnLocation(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private async Task LoadNotifications(bool list)
+    {
+        try
+        {
+            await using var scope = Scopes.CreateAsyncScope();
+            scope.ServiceProvider.GetRequiredService<CurrentUser>().Use(Me.User);
+            var svc = scope.ServiceProvider.GetRequiredService<NotificationService>();
+            _unread = await svc.UnreadCountAsync();
+            if (list) _items = await svc.RecentAsync(20);
+        }
+        catch { /* notifications are best-effort */ }
+    }
+
+    private async Task ToggleNotifications()
+    {
+        _showNotifications = !_showNotifications;
+        if (_showNotifications) await LoadNotifications(true);
+    }
+
+    private async Task MarkRead()
+    {
+        await using var scope = Scopes.CreateAsyncScope();
+        scope.ServiceProvider.GetRequiredService<CurrentUser>().Use(Me.User);
+        await scope.ServiceProvider.GetRequiredService<NotificationService>().MarkAllReadAsync();
+        await LoadNotifications(true);
+    }
+
+    private async Task ToggleLang()
+    {
+        var lang = Ui.IsAr ? "en" : "ar";
+        Ui.Set(lang);
+        try { await JS.InvokeVoidAsync("eid.setLang", lang); } catch { }
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        Ui.Changed -= Refresh;
+        Nav.LocationChanged -= OnLocation;
+    }
+}

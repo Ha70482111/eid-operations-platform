@@ -1,0 +1,87 @@
+@page "/admin/approval-matrix"
+@attribute [Authorize(Policy = Perm.AdminApprovalMatrix)]
+@inherits EidPage
+
+<PageTitle>@T("مصفوفة الاعتماد", "Approval matrix")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="A4" Title="@T("مصفوفة حدود الاعتماد", "Approval limits matrix")" Subtitle="@T("الحد الأعلى الذي يستطيع كل دور اعتماده في كل نوع عملية. لا توجد مبالغ ثابتة في الكود؛ الطلب الأعلى من حد المعتمد يُرفض ويحتاج دورًا أعلى.", "The maximum each role may approve per operation. No amounts are hard-coded; a request above the approver's limit needs a higher role.")">
+        <Actions><button class="primary-btn" @onclick="New"><Icon Name="plus" />@T("حد جديد", "New limit")</button></Actions>
+    </PageHeader>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        @foreach (var g in _items.GroupBy(l => l.Module))
+        {
+            var m = StatusText.Module(g.Key);
+            <section class="data-card">
+                <div class="card-head"><h2>@T(m.Ar, m.En)</h2></div>
+                <div class="table-wrap"><table>
+                    <thead><tr><th>@T("الدور", "Role")</th><th>@T("المركز", "Center")</th><th>@T("نوع المصروف", "Expense type")</th><th>@T("الحد الأعلى", "Max amount")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var l in g)
+                        {
+                            <tr>
+                                <td><strong>@RoleName(l.RoleId)</strong></td>
+                                <td>@(l.CenterId is int c ? CenterName(c) : T("كل المراكز", "All centers"))</td>
+                                <td>@(string.IsNullOrEmpty(l.ExpenseType) ? T("الكل", "Any") : l.ExpenseType)</td>
+                                <td dir="ltr"><strong>@Ui.Money(l.MaxAmount)</strong> @l.Currency</td>
+                                <td><StatusPill Css="@(l.IsActive ? "success" : "neutral")">@(l.IsActive ? T("فعال", "Active") : T("موقوف", "Inactive"))</StatusPill></td>
+                                <td class="actions"><button class="icon-btn sm" title="@T("تعديل", "Edit")" @onclick="() => Edit(l)"><Icon Name="pencil-line" /></button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            </section>
+        }
+    </PageState>
+</div>
+<Modal @bind-Open="_open" Title="@T("حد اعتماد", "Approval limit")">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field"><label class="req">@T("نوع العملية", "Operation")</label>
+                <select @bind="_i.Module">@foreach (var m in Enum.GetValues<ApprovalModule>()) { <option value="@m">@T(StatusText.Module(m).Ar, StatusText.Module(m).En)</option> }</select>
+            </div>
+            <div class="field"><label class="req">@T("الدور", "Role")</label>
+                <select @bind="_i.RoleId"><option value="">—</option>@foreach (var r in _roles) { <option value="@r.Id">@Ui.N(r.NameAr, r.NameEn)</option> }</select>
+            </div>
+            <div class="field"><label>@T("المركز", "Center")</label>
+                <select @bind="_center"><option value="">@T("كل المراكز", "All centers")</option>@foreach (var c in _centers) { <option value="@c.Id">@Ui.Name(c)</option> }</select>
+            </div>
+            <div class="field"><label>@T("نوع المصروف (اختياري)", "Expense type (optional)")</label><input @bind="_i.ExpenseType" /></div>
+            <div class="field"><label class="req">@T("الحد الأعلى", "Max amount") (@Ui.Cur)</label><input type="number" min="1" step="0.01" @bind="_i.MaxAmount" dir="ltr" /></div>
+            <label class="check"><input type="checkbox" @bind="_i.IsActive" />@T("فعال", "Active")</label>
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Save">@T("حفظ", "Save")</button></Footer>
+</Modal>
+@code {
+    private List<ApprovalLimit> _items = [];
+    private List<AdminService.LookupItem> _roles = [];
+    private List<Center> _centers = [];
+    private ApprovalLimit _i = new();
+    private string _center = "";
+    private bool _open;
+
+    protected override async Task LoadAsync()
+    {
+        var a = S<AdminService>();
+        _items = await a.LimitsAsync();
+        if (_roles.Count == 0) _roles = await a.RoleLookupAsync();
+        if (_centers.Count == 0) _centers = await a.CentersAsync();
+    }
+
+    private string RoleName(string id) => _roles.FirstOrDefault(r => r.Id == id) is { } r ? Ui.N(r.NameAr, r.NameEn) : id;
+    private string CenterName(int id) => _centers.FirstOrDefault(c => c.Id == id) is { } c ? Ui.Name(c) : id.ToString();
+
+    private void New() { _i = new ApprovalLimit { Module = ApprovalModule.Disbursement }; _center = ""; _open = true; }
+    private void Edit(ApprovalLimit l)
+    {
+        _i = new ApprovalLimit { Id = l.Id, RoleId = l.RoleId, Module = l.Module, CenterId = l.CenterId, ExpenseType = l.ExpenseType, MaxAmount = l.MaxAmount, Currency = l.Currency, IsActive = l.IsActive };
+        _center = l.CenterId?.ToString() ?? "";
+        _open = true;
+    }
+    private async Task Save()
+    {
+        _i.CenterId = int.TryParse(_center, out var c) ? c : null;
+        if (string.IsNullOrWhiteSpace(_i.ExpenseType)) _i.ExpenseType = null;
+        if (await Run(() => S<AdminService>().SaveLimitAsync(_i), "تم الحفظ", "Saved")) _open = false;
+    }
+}

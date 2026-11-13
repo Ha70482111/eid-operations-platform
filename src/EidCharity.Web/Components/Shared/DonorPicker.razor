@@ -1,0 +1,44 @@
+@inject Ui Ui
+<div class="field" style="position:relative">
+    @if (!string.IsNullOrEmpty(Label)) { <label class="@(Required ? "req" : "")">@Label</label> }
+    @if (Selected is not null)
+    {
+        <div class="donor-result" style="margin-top:0">
+            <div class="avatar">@(Selected.NameAr.Length > 0 ? Selected.NameAr[..1] : "?")</div>
+            <div><strong>@Selected.DisplayName(Ui.IsAr)</strong><span dir="ltr">@Selected.Number</span></div>
+            <button type="button" class="icon-btn sm" @onclick="Clear" aria-label="@Ui.T("تغيير", "Change")"><Icon Name="x" /></button>
+        </div>
+    }
+    else
+    {
+        <div class="input-icon"><Icon Name="search" /><input value="@_q" @oninput="OnInput" placeholder="@Ui.T("ابحث بالاسم أو الهاتف أو رقم المتبرع…", "Search name, phone or donor no…")" /></div>
+        @foreach (var d in _results)
+        {
+            <button type="button" class="donor-result" @onclick="() => Pick(d)">
+                <div class="avatar">@(d.NameAr.Length > 0 ? d.NameAr[..1] : "?")</div>
+                <div><strong>@d.DisplayName(Ui.IsAr)</strong><span dir="ltr">@d.Number @d.Phone</span></div>
+            </button>
+        }
+    }
+</div>
+@code {
+    [Parameter, EditorRequired] public Func<string, Task<List<Donor>>> Search { get; set; } = default!;
+    [Parameter] public Donor? Selected { get; set; }
+    [Parameter] public EventCallback<Donor?> SelectedChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool Required { get; set; }
+    private string _q = "";
+    private List<Donor> _results = [];
+    private CancellationTokenSource? _cts;
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        _q = e.Value?.ToString() ?? "";
+        _cts?.Cancel(); _cts = new(); var t = _cts.Token;
+        try { await Task.Delay(250, t); } catch (TaskCanceledException) { return; }
+        _results = _q.Length < 2 ? [] : await Search(_q);
+    }
+
+    private async Task Pick(Donor d) { _results = []; _q = ""; await SelectedChanged.InvokeAsync(d); }
+    private Task Clear() => SelectedChanged.InvokeAsync(null);
+}

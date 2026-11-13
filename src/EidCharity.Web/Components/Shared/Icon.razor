@@ -1,0 +1,8 @@
+<svg class="ico @Class" xmlns="http://www.w3.org/2000/svg" width="@Size" height="@Size" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+     stroke-width="@Stroke" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">@((MarkupString)(IconPaths.All.TryGetValue(Name, out var p) ? p : ""))</svg>
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter] public int Size { get; set; } = 18;
+    [Parameter] public double Stroke { get; set; } = 2;
+    [Parameter] public string? Class { get; set; }
+}

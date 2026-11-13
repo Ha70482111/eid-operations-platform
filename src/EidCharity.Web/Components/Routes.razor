@@ -1,0 +1,26 @@
+﻿@inject Ui Ui
+
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated != true)
+                {
+                    <RedirectToLogin />
+                }
+                else
+                {
+                    <div class="page"><StatePanel Kind="locked" TitleAr="لا تملك صلاحية هذه الشاشة" TitleEn="You don't have access to this screen"
+                        TextAr="تواصل مع مدير النظام إذا كنت تحتاج هذه الصلاحية." TextEn="Ask the system administrator if you need this permission." /></div>
+                }
+            </NotAuthorized>
+            <Authorizing><div class="page"><StatePanel Kind="loading" TitleAr="جارٍ التحقق…" TitleEn="Checking access…" /></div></Authorizing>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+</Router>
+
+@code {
+    [Parameter] public string Lang { get; set; } = "ar";
+    protected override void OnInitialized() => Ui.Set(Lang);
+}

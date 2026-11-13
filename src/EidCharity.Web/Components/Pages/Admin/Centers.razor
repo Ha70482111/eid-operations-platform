@@ -1,0 +1,44 @@
+@page "/admin/centers"
+@attribute [Authorize(Policy = Perm.AdminCenters)]
+@inherits EidPage
+
+<PageTitle>@T("المراكز", "Centers")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="A3" Title="@T("المراكز", "Centers")" Subtitle="@T("المراكز والإدارات التي تتبعها المشاريع والمحصّلون. المستخدم يرى بيانات مركزه فقط إلا إذا مُنح نطاق كل المراكز.", "Centers and departments that own projects and collectors. Users see their own center unless granted all-centers scope.")">
+        <Actions><button class="primary-btn" @onclick="() => Open(new Center())"><Icon Name="plus" />@T("مركز جديد", "New center")</button></Actions>
+    </PageHeader>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("الرمز", "Code")</th><th>@T("الاسم", "Name")</th><th>@T("الإدارة", "Department")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var c in _items)
+                {
+                    <tr><td><strong dir="ltr">@c.Code</strong></td><td>@Ui.Name(c)</td><td>@Ui.N(c.DepartmentAr, c.DepartmentEn)</td>
+                        <td><StatusPill Css="@(c.IsActive ? "success" : "neutral")">@(c.IsActive ? T("نشط", "Active") : T("موقوف", "Inactive"))</StatusPill></td>
+                        <td class="actions"><button class="icon-btn sm" title="@T("تعديل", "Edit")" @onclick="() => Open(c)"><Icon Name="pencil-line" /></button></td></tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal @bind-Open="_open" Title="@T("مركز", "Center")">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field"><label class="req">@T("الرمز", "Code")</label><input @bind="_i.Code" dir="ltr" /></div>
+            <label class="check"><input type="checkbox" @bind="_i.IsActive" />@T("نشط", "Active")</label>
+            <div class="field"><label class="req">@T("الاسم بالعربية", "Name (Arabic)")</label><input @bind="_i.NameAr" /></div>
+            <div class="field"><label>@T("الاسم بالإنجليزية", "Name (English)")</label><input @bind="_i.NameEn" dir="ltr" /></div>
+            <div class="field"><label>@T("الإدارة بالعربية", "Department (Arabic)")</label><input @bind="_i.DepartmentAr" /></div>
+            <div class="field"><label>@T("الإدارة بالإنجليزية", "Department (English)")</label><input @bind="_i.DepartmentEn" dir="ltr" /></div>
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Save">@T("حفظ", "Save")</button></Footer>
+</Modal>
+@code {
+    private List<Center> _items = [];
+    private Center _i = new();
+    private bool _open;
+    protected override async Task LoadAsync() => _items = await S<AdminService>().CentersAsync();
+    private void Open(Center c) { _i = new Center { Id = c.Id, Code = c.Code, NameAr = c.NameAr, NameEn = c.NameEn, DepartmentAr = c.DepartmentAr, DepartmentEn = c.DepartmentEn, IsActive = c.Id == 0 || c.IsActive }; _open = true; }
+    private async Task Save() { if (await Run(() => S<AdminService>().SaveCenterAsync(_i), "تم الحفظ", "Saved")) _open = false; }
+}

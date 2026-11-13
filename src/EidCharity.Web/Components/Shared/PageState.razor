@@ -1,0 +1,25 @@
+@inject Ui Ui
+@if (Loading)
+{
+    <div class="skeleton-wrap"><div class="state-demo loading"></div><div class="state-demo loading"></div></div>
+}
+else if (!string.IsNullOrEmpty(Error))
+{
+    <StatePanel Kind="error" TitleAr="تعذر عرض البيانات" TitleEn="Could not show data" TextAr="@Error" TextEn="@Error" />
+}
+else if (Empty)
+{
+    <StatePanel Kind="empty" TitleAr="@EmptyAr" TitleEn="@EmptyEn" />
+}
+else
+{
+    @ChildContent
+}
+@code {
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool Empty { get; set; }
+    [Parameter] public string EmptyAr { get; set; } = "لا توجد سجلات بعد";
+    [Parameter] public string EmptyEn { get; set; } = "No records yet";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

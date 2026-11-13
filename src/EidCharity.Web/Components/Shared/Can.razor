@@ -1,0 +1,7 @@
+@inject CurrentUser Me
+@if (Perms.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Any(Me.Has)) { @ChildContent } else if (Otherwise is not null) { @Otherwise }
+@code {
+    [Parameter] public string Perms { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Otherwise { get; set; }
+}

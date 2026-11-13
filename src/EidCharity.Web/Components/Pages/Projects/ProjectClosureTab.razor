@@ -1,0 +1,60 @@
+@inherits EidPage
+<div class="grid-2">
+    <section class="data-card">
+        <div class="card-head"><div><h2>@T("شروط الإقفال", "Closing conditions")</h2><p>@T("يُقفل المشروع فقط عند تحقق جميع الشروط", "The project closes only when all conditions pass")</p></div></div>
+        <PageState Loading="Loading" Error="@Error">
+            <div class="checklist" style="border:0">
+                @foreach (var c in _checks)
+                {
+                    <div class="mini-check" style="color:@(c.Passed ? "#29705d" : "#a54743")"><Icon Name="@(c.Passed ? "circle-check" : "circle-x")" />@T(c.KeyAr, c.KeyEn) @if (c.DetailAr is not null) { <small class="muted">(@c.DetailAr)</small> }</div>
+                }
+            </div>
+        </PageState>
+    </section>
+    <section class="data-card">
+        <div class="card-head"><div><h2>@T("تأكيدات موثقة", "Documented confirmations")</h2></div></div>
+        <div class="card-pad stack">
+            <label class="check"><input type="checkbox" @bind="_c.ExecutionDocumented" disabled="@ReadOnly" />@T("التنفيذ أو قرار الإلغاء موثق", "Execution or cancellation decision documented")</label>
+            <label class="check"><input type="checkbox" @bind="_c.ExpensesSettled" disabled="@ReadOnly" />@T("المصروفات والسلف مسواة", "Expenses and advances settled")</label>
+            <label class="check"><input type="checkbox" @bind="_c.OpenRequestsResolved" disabled="@ReadOnly" />@T("الطلبات المفتوحة معالجة", "Open requests resolved")</label>
+            <label class="check"><input type="checkbox" @bind="_c.PledgesResolved" disabled="@ReadOnly" />@T("التعهدات والدفعات غير المحصلة محسومة", "Uncollected pledges/installments resolved")</label>
+            <label class="check"><input type="checkbox" @bind="_c.DifferencesSettled" disabled="@ReadOnly" />@T("الفروق والمرتجعات مسواة", "Differences and returns settled")</label>
+            <label class="check"><input type="checkbox" @bind="_c.FinalReportApproved" disabled="@ReadOnly" />@T("التقرير الختامي معتمد", "Final report approved")</label>
+            <div class="field"><label>@T("معالجة الرصيد المتبقي", "Remaining balance treatment")</label><textarea @bind="_c.BalanceTreatment" disabled="@ReadOnly"></textarea></div>
+            <div class="field"><label>@T("ملاحظات", "Notes")</label><textarea @bind="_c.Notes" disabled="@ReadOnly"></textarea></div>
+            <div class="form-actions">
+                @if (!Project.IsClosed && Can(Perm.ProjectClose))
+                {
+                    <button class="secondary-btn" disabled="@Busy" @onclick="Save">@T("حفظ التأكيدات", "Save confirmations")</button>
+                    <button class="primary-btn" disabled="@(Busy || _checks.Any(c => !c.Passed))" @onclick="Close"><Icon Name="lock" />@T("إقفال المشروع", "Close project")</button>
+                }
+                @if (Project.IsClosed && Can(Perm.ProjectReopen)) { <button class="danger-btn" @onclick="() => _reopenOpen = true">@T("إعادة فتح (استثناء)", "Reopen (exception)")</button> }
+            </div>
+        </div>
+    </section>
+</div>
+<Modal @bind-Open="_reopenOpen" Title="@T("إعادة فتح مشروع مقفل", "Reopen a closed project")">
+    <ChildContent>
+        <div class="notice-box warn"><Icon Name="triangle-alert" />@T("إعادة الفتح استثناء: يعود المشروع لانتظار المالية ويُوقف التحصيل حتى إعادة اعتماد الإتاحة.", "Reopening is an exception: the project returns to finance and collections stay suspended until eligibility is re-approved.")</div>
+        <div class="field"><label class="req">@T("السبب", "Reason")</label><textarea @bind="_reason"></textarea></div>
+    </ChildContent>
+    <Footer><button class="danger-btn" disabled="@Busy" @onclick="Reopen">@T("تأكيد إعادة الفتح", "Confirm reopen")</button></Footer>
+</Modal>
+@code {
+    [Parameter] public Project Project { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private List<ClosureCheck> _checks = [];
+    private ProjectClosure _c = new();
+    private bool _reopenOpen;
+    private string _reason = "";
+    private bool ReadOnly => Project.IsClosed || !Can(Perm.ProjectClose);
+
+    protected override async Task LoadAsync()
+    {
+        _checks = await S<ClosureService>().ChecksAsync(Project.Id);
+        _c = await S<ClosureService>().GetAsync(Project.Id);
+    }
+    private Task Save() => Run(() => S<ClosureService>().SaveChecklistAsync(_c), "تم الحفظ", "Saved");
+    private async Task Close() { if (await Run(() => S<ClosureService>().CloseAsync(Project.Id), "تم إقفال المشروع — أصبح للقراءة فقط", "Project closed — now read-only")) await OnChanged.InvokeAsync(); }
+    private async Task Reopen() { if (await Run(() => S<ClosureService>().ReopenAsync(Project.Id, _reason), "أُعيد فتح المشروع", "Project reopened")) { _reopenOpen = false; await OnChanged.InvokeAsync(); } }
+}

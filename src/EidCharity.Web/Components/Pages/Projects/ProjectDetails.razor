@@ -1,0 +1,161 @@
+@page "/projects/{Id:int}"
+@attribute [Authorize(Policy = Perm.ProjectsView)]
+@inherits EidPage
+
+<PageTitle>@(_p is null ? T("المشروع", "Project") : Ui.Name(_p))</PageTitle>
+<div class="page">
+    <PageState Loading="Loading" Error="@Error">
+        @if (_p is not null && _f is not null)
+        {
+            <PageHeader Eyebrow="@($"P06 · {_p.Code} · {_p.Program?.Code}")" Title="@Ui.Name(_p)" Subtitle="@($"{Ui.Name(_p.Program!)} — {Ui.Name(_p.Center!)}")">
+                <Actions>
+                    @if (Can(Perm.ProjectsEdit) && !_p.IsClosed && _p.ApprovalStatus is ApprovalStatus.Draft or ApprovalStatus.ReturnedToCenter or ApprovalStatus.FinanciallyApproved)
+                    { <a class="secondary-btn" href="/projects/@_p.Id/edit"><Icon Name="pencil-line" />@T("تعديل", "Edit")</a> }
+                    @if (Can(Perm.ProjectsSubmit) && _p.IsEditableByCenter)
+                    { <button class="primary-btn" disabled="@Busy" @onclick="Submit"><Icon Name="send" />@(_p.ApprovalStatus == ApprovalStatus.ReturnedToCenter ? T("إعادة الإرسال للمالية", "Resubmit to finance") : T("إرسال للمالية", "Submit to finance"))</button> }
+                    @if (Can(Perm.FinanceReview) && _p.ApprovalStatus is ApprovalStatus.AwaitingFinance or ApprovalStatus.UnderFinanceReview or ApprovalStatus.FinanciallyApproved or ApprovalStatus.Suspended)
+                    { <a class="primary-btn" href="/projects/finance/@_p.Id"><Icon Name="clipboard-check" />@T("المراجعة المالية والربط", "Finance review & mapping")</a> }
+                </Actions>
+            </PageHeader>
+            <div class="row mb">
+                <StatusPill Tone="StatusText.Of(_p.ApprovalStatus)" />
+                <StatusPill Tone="StatusText.Of(_p.CollectionStatus)" />
+                <StatusPill Tone="StatusText.Of(_p.ExecutionStatus)" />
+                <StatusPill Tone="StatusText.Of(_p.MappingSyncStatus)" />
+                @if (_p.PendingChangesJson is not null) { <StatusPill Css="warning">@T("تغيير جوهري بانتظار المالية", "Substantive change awaiting finance")</StatusPill> }
+                @if (!string.IsNullOrEmpty(_p.StatusReason)) { <span class="muted" style="font-size:12px">@_p.StatusReason</span> }
+            </div>
+            @if (_p.ApprovalStatus == ApprovalStatus.ReturnedToCenter)
+            {
+                var note = _p.ReviewHistory.FirstOrDefault(r => r.Action == ReviewAction.ReturnedToCenter)?.Note;
+                <div class="notice-box danger"><Icon Name="circle-alert" /><div><strong>@T("أُعيد المشروع من المالية للتعديل", "Returned by finance for changes")</strong><div>@note</div></div></div>
+            }
+            <section class="metric-strip">
+                <Metric Label="@T("صافي المؤكد", "Confirmed net")" Value="@Ui.Money(_f.ConfirmedNet)" Note="@T($"من سقف {Ui.Money(_f.CollectionCap)}", $"of cap {Ui.Money(_f.CollectionCap)}")" IconName="badge-check" />
+                <Metric Label="@T("المتاح للصرف", "Available to spend")" Value="@Ui.Money(_f.AvailableToSpend)" Note="@T("المؤكد − المنفذ − المحجوز", "Confirmed − executed − reserved")" IconName="wallet-cards" Warn="@(_f.AvailableToSpend <= 0)" />
+                <Metric Label="@T("المحجوز / المنفذ", "Reserved / executed")" Value="@($"{Ui.Money(_f.Reserved)} / {Ui.Money(_f.Executed)}")" IconName="banknote" />
+                <Metric Label="@T("تقدم التنفيذ", "Execution progress")" Value="@($"{ExecutionService.Progress(_milestones)}%")" Currency="false" Note="@T("حسب المؤشرات لا الصرف", "By indicators, not spending")" IconName="gauge" />
+            </section>
+            <div class="tabs">
+                @foreach (var (key, ar, en) in Tabs)
+                {
+                    <button class="@(_tab == key ? "active" : "")" @onclick="() => _tab = key">@T(ar, en)</button>
+                }
+            </div>
+            @switch (_tab)
+            {
+                case "overview":
+                    <div class="grid-2">
+                        <section class="data-card">
+                            <div class="card-head"><div><h2>@T("بيانات المشروع", "Project data")</h2></div></div>
+                            <div class="kv">
+                                <div><span>@T("النوع", "Type")</span><strong>@(_p.Kind == ProjectKind.Standalone ? T("منفرد", "Standalone") : T("ضمن برنامج", "Within program"))</strong></div>
+                                <div><span>@T("المدة", "Duration")</span><strong dir="ltr">@Ui.Date(_p.ExecutionStart) → @Ui.Date(_p.ExecutionEnd)</strong></div>
+                                <div><span>@T("الموقع", "Location")</span><strong>@_p.Location</strong></div>
+                                <div><span>@T("نطاق التنفيذ", "Scope")</span><strong>@_p.ExecutionScope</strong></div>
+                                <div><span>@T("المستفيدون المستهدفون", "Target beneficiaries")</span><strong>@_p.TargetBeneficiaries @_p.BeneficiaryUnit — @_p.BeneficiaryCategory</strong></div>
+                                <div><span>@T("مرجع الدراسة", "Study reference")</span><strong>@_p.StudyReference</strong></div>
+                            </div>
+                            <div class="card-pad"><p style="font-size:13px;line-height:1.8">@(Ui.IsAr ? _p.SummaryAr : _p.SummaryEn)</p>
+                                @if (!string.IsNullOrEmpty(_p.Objectives)) { <p class="muted mt" style="font-size:12px"><strong>@T("الأهداف:", "Objectives:")</strong> @_p.Objectives</p> }
+                                @if (!string.IsNullOrEmpty(_p.Activities)) { <p class="muted" style="font-size:12px"><strong>@T("الأنشطة:", "Activities:")</strong> @_p.Activities</p> }</div>
+                        </section>
+                        <section class="data-card">
+                            <div class="card-head"><div><h2>@T("الموقف المالي", "Financial position")</h2><p>@T("الإيرادات تأتي من نظام التحصيل فقط ولا تُدخل يدويًا", "Revenue comes only from Collections; never entered manually")</p></div></div>
+                            <div class="kv">
+                                <div><span>@T("تكلفة التنفيذ", "Execution cost")</span><strong><Money Value="_f.ExecutionCost" Currency="@_f.Currency" /></strong></div>
+                                <div><span>@T("سقف التحصيل", "Collection cap")</span><strong><Money Value="_f.CollectionCap" /></strong></div>
+                                <div><span>@T("المتبقي من السقف", "Cap remaining")</span><strong><Money Value="_f.CapRemaining" /></strong></div>
+                                <div><span>@T("متوقع (تعهدات/اتفاقيات)", "Expected (pledges/agreements)")</span><strong><Money Value="_f.Pledged" /></strong></div>
+                                <div><span>@T("قيد التحقق", "Pending")</span><strong><Money Value="_f.Pending" /></strong></div>
+                                <div><span>@T("المؤكد الإجمالي", "Confirmed gross")</span><strong><Money Value="_f.ConfirmedGross" /></strong></div>
+                                <div><span>@T("المسترد", "Refunds")</span><strong><Money Value="_f.Refunds" /></strong></div>
+                                <div><span>@T("صافي إعادة التخصيص", "Reallocation net")</span><strong><Money Value="_f.ReallocatedNet" /></strong></div>
+                                <div><span>@T("عيني (تقديري)", "In-kind (estimated)")</span><strong><Money Value="_f.InKindEstimated" /></strong></div>
+                                <div><span>@T("إجمالي الميزانية", "Budget total")</span><strong><Money Value="_f.BudgetTotal" /></strong></div>
+                                <div><span>@T("المتبقي من الميزانية", "Budget remaining")</span><strong><Money Value="_f.BudgetRemaining" /></strong></div>
+                            </div>
+                        </section>
+                    </div>
+                    break;
+                case "mapping":
+                    <section class="data-card">
+                        <div class="card-head"><div><h2>@T("البند المالي والتراخيص", "Financial item & licenses")</h2><p>@T($"نسخة الربط v{_p.MappingVersion} — آخر إرسال {Ui.DateTimeStr(_p.MappingSyncedAt)}", $"Mapping v{_p.MappingVersion} — last sent {Ui.DateTimeStr(_p.MappingSyncedAt)}")</p></div></div>
+                        <div class="table-wrap"><table>
+                            <thead><tr><th>@T("الترخيص", "License")</th><th>@T("البند المالي", "Financial item")</th><th>@T("الفترة", "Period")</th><th class="num">@T("سقف الربط", "Link cap")</th><th>@T("الحالة", "Status")</th><th>@T("النسخة", "Version")</th></tr></thead>
+                            <tbody>
+                                @foreach (var m in _p.Mappings.OrderByDescending(m => m.MappingVersion))
+                                {
+                                    <tr><td><strong dir="ltr">@m.License?.Number</strong><span>@m.License?.Purposes</span></td><td dir="ltr">@m.FinancialItem?.Number</td><td dir="ltr">@Ui.Date(m.PeriodFrom) → @Ui.Date(m.PeriodTo)</td><td class="num"><Money Value="m.LinkCap" ShowCurrency="false" /></td><td><StatusPill Tone="StatusText.Of(m.Status)" /></td><td>v@(m.MappingVersion)</td></tr>
+                                }
+                            </tbody>
+                        </table></div>
+                        @if (_p.MappingSyncStatus == SyncStatus.Failed) { <div class="notice-box danger" style="margin:14px"><Icon Name="circle-x" />@T("فشل إرسال الربط لنظام التحصيل:", "Mapping sync failed:") @_p.MappingSyncError</div> }
+                    </section>
+                    break;
+                case "budget":
+                    <ProjectBudgetTab Project="_p" Financials="_f" OnChanged="Reload" />
+                    break;
+                case "disb":
+                    <ProjectDisbursementsTab ProjectId="_p.Id" Closed="_p.IsClosed" />
+                    break;
+                case "exec":
+                    <ProjectExecutionTab Project="_p" OnChanged="Reload" />
+                    break;
+                case "files":
+                    <AttachmentsPanel OwnerType="Project" OwnerId="_p.Id" CanUpload="@(!_p.IsClosed && CanAny(Perm.ProjectsEdit, Perm.ExecutionManage, Perm.FinanceReview))" />
+                    break;
+                case "closure":
+                    <ProjectClosureTab Project="_p" OnChanged="Reload" />
+                    break;
+                case "history":
+                    <section class="data-card">
+                        <div class="card-head"><div><h2>@T("سجل المراجعة والقرارات", "Review & decision history")</h2></div></div>
+                        @if (_p.ReviewHistory.Count == 0) { <div class="empty-hint">@T("لا يوجد سجل بعد", "No history yet")</div> }
+                        <ul class="timeline">
+                            @foreach (var h in _p.ReviewHistory.OrderByDescending(h => h.Id))
+                            {
+                                <li><strong>@ActionText(h.Action)</strong> — @T(StatusText.Of(h.FromStatus).Ar, StatusText.Of(h.FromStatus).En) → @T(StatusText.Of(h.ToStatus).Ar, StatusText.Of(h.ToStatus).En)
+                                    <small>@h.ByUserName · @Ui.DateTimeStr(h.CreatedAt)</small>
+                                    @if (!string.IsNullOrEmpty(h.Note)) { <p>@h.Note</p> }</li>
+                            }
+                        </ul>
+                    </section>
+                    break;
+            }
+        }
+    </PageState>
+</div>
+@code {
+    [Parameter] public int Id { get; set; }
+    [SupplyParameterFromQuery(Name = "tab")] public string? TabQuery { get; set; }
+    private Project? _p;
+    private ProjectFinancials? _f;
+    private List<ExecutionMilestone> _milestones = [];
+    private string _tab = "overview";
+
+    private static readonly (string, string, string)[] Tabs =
+    [
+        ("overview", "نظرة عامة", "Overview"), ("mapping", "الربط والتراخيص", "Mapping & licenses"), ("budget", "الميزانية", "Budget"),
+        ("disb", "طلبات الصرف", "Disbursements"), ("exec", "التنفيذ والمستفيدون", "Execution & beneficiaries"), ("files", "المرفقات", "Attachments"),
+        ("closure", "الإقفال", "Closure"), ("history", "السجل", "History"),
+    ];
+
+    protected override async Task LoadAsync()
+    {
+        if (TabQuery is not null) { _tab = TabQuery; TabQuery = null; }
+        _p = await S<ProjectService>().GetProjectAsync(Id);
+        _f = await S<FinancialsService>().ForProjectAsync(Id);
+        _milestones = await S<ExecutionService>().MilestonesAsync(Id);
+    }
+
+    private Task Submit() => Run(() => S<ProjectService>().SubmitToFinanceAsync(Id), "أُرسل المشروع للمراجعة المالية", "Submitted to finance");
+
+    private string ActionText(ReviewAction a) => a switch
+    {
+        ReviewAction.Submitted => T("إرسال للمالية", "Submitted"), ReviewAction.Resubmitted => T("إعادة إرسال", "Resubmitted"), ReviewAction.ReviewStarted => T("بدء المراجعة", "Review started"),
+        ReviewAction.ReturnedToCenter => T("إعادة للمركز", "Returned to center"), ReviewAction.Mapped => T("حفظ الربط", "Mapping saved"), ReviewAction.Approved => T("اعتماد الإتاحة", "Eligibility approved"),
+        ReviewAction.Rejected => T("رفض", "Rejected"), ReviewAction.Suspended => T("إيقاف", "Suspended"), ReviewAction.Resumed => T("استئناف", "Resumed"),
+        ReviewAction.SubstantiveChange => T("تغيير جوهري", "Substantive change"), ReviewAction.Closed => T("إقفال", "Closed"), _ => a.ToString()
+    };
+}

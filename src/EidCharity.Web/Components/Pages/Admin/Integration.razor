@@ -1,0 +1,76 @@
+@page "/admin/integration"
+@attribute [Authorize(Policy = Perm.IntegrationMonitor)]
+@inherits EidPage
+
+<PageTitle>@T("متابعة الربط", "Integration monitor")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="A8" Title="@T("متابعة الربط بين النظامين", "Integration monitor")" Subtitle="@T("رسائل الربط بين المشاريع الداخلية والتحصيل (إتاحة المشاريع، الإيرادات، الإيقاف). إعادة الإرسال آمنة ولا تكرر الأثر.", "Messages between Internal Projects and Collections (eligibility, revenue, suspension). Retrying is safe and never duplicates the effect.")">
+        <Actions><button class="secondary-btn" @onclick="Reload"><Icon Name="refresh-cw" />@T("تحديث", "Refresh")</button></Actions>
+    </PageHeader>
+    <div class="tabs">
+        <button class="@(_state is null ? "active" : "")" @onclick="() => Filter(null)">@T("الكل", "All")</button>
+        <button class="@(_state == OutboxState.Pending ? "active" : "")" @onclick="() => Filter(OutboxState.Pending)">@T("قيد الإرسال", "Pending")</button>
+        <button class="@(_state == OutboxState.Failed ? "active" : "")" @onclick="() => Filter(OutboxState.Failed)">@T("فشل", "Failed")</button>
+        <button class="@(_state == OutboxState.Succeeded ? "active" : "")" @onclick="() => Filter(OutboxState.Succeeded)">@T("تم", "Succeeded")</button>
+    </div>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)" EmptyAr="لا توجد رسائل" EmptyEn="No messages">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>#</th><th>@T("النوع", "Type")</th><th>@T("المرجع", "Reference")</th><th>@T("أُنشئت", "Created")</th><th>@T("المحاولات", "Attempts")</th><th>@T("الحالة", "State")</th><th>@T("آخر خطأ", "Last error")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var m in _items)
+                {
+                    var st = Tone(m.State);
+                    <tr>
+                        <td dir="ltr">@m.Id</td>
+                        <td><strong dir="ltr">@m.Type</strong></td>
+                        <td dir="ltr">@m.Reference</td>
+                        <td dir="ltr">@Ui.DateTimeStr(m.CreatedAt)<small>@(m.ProcessedAt is null ? "" : T("عولجت ", "processed ") + Ui.DateTimeStr(m.ProcessedAt))</small></td>
+                        <td>@m.Attempts</td>
+                        <td><StatusPill Css="@st.Css">@T(st.Ar, st.En)</StatusPill></td>
+                        <td class="muted" style="max-width:280px" dir="ltr">@m.LastError</td>
+                        <td class="actions">
+                            <button class="icon-btn sm" title="@T("المحتوى", "Payload")" @onclick="() => _sel = m"><Icon Name="eye" /></button>
+                            @if (m.State == OutboxState.Failed)
+                            {
+                                <button class="secondary-btn btn-sm" disabled="@Busy" @onclick="() => Retry(m.Id)"><Icon Name="rotate-ccw" />@T("إعادة الإرسال", "Retry")</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal Open="@(_sel is not null)" OpenChanged="v => { if (!v) _sel = null; }" Title="@T("محتوى الرسالة", "Message payload")" Wide="true">
+    <ChildContent>
+        @if (_sel is not null)
+        {
+            <p dir="ltr"><strong>@_sel.Type</strong> · @_sel.IdempotencyKey</p>
+            <pre class="code-block" dir="ltr">@Pretty(_sel.Payload)</pre>
+        }
+    </ChildContent>
+</Modal>
+@code {
+    private List<OutboxMessage> _items = [];
+    private OutboxState? _state;
+    private OutboxMessage? _sel;
+
+    protected override async Task LoadAsync() => _items = await S<AdminService>().OutboxAsync(_state);
+
+    private async Task Filter(OutboxState? s) { _state = s; await Reload(); }
+
+    private static Tone Tone(OutboxState s) => s switch
+    {
+        OutboxState.Pending => new("warning", "قيد الإرسال", "Pending"),
+        OutboxState.Failed => new("danger", "فشل", "Failed"),
+        _ => new("success", "تم", "Succeeded"),
+    };
+
+    private Task Retry(long id) => Run(() => S<AdminService>().RetryAsync(id), "أُعيدت الرسالة إلى قائمة الإرسال", "Message re-queued");
+
+    private static string Pretty(string json)
+    {
+        try { return System.Text.Json.JsonSerializer.Serialize(System.Text.Json.JsonDocument.Parse(json).RootElement, new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }); }
+        catch { return json; }
+    }
+}

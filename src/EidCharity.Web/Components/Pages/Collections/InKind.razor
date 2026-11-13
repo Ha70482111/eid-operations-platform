@@ -1,0 +1,84 @@
+@page "/collections/in-kind"
+@attribute [Authorize(Policy = Perm.InKindManage + "," + Perm.InKindApproveValuation)]
+@inherits EidPage
+
+<PageTitle>@T("التبرعات العينية", "In-kind donations")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C20" Title="@T("التبرعات العينية", "In-kind donations")" Subtitle="@T("تُسجل بالكمية والحالة والموقع. القيمة التقديرية تُعتمد منفصلة ولا تدخل ضمن السيولة النقدية.", "Recorded by quantity, condition and location. Estimated value is approved separately and never enters cash.")">
+        <Actions>@if (Can(Perm.InKindManage)) { <button class="primary-btn" @onclick="New"><Icon Name="plus" />@T("استلام عيني", "Receive in-kind")</button> }</Actions>
+    </PageHeader>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("الرقم", "No.")</th><th>@T("الصنف", "Item")</th><th>@T("المشروع", "Project")</th><th>@T("الكمية", "Qty")</th><th>@T("الموزع", "Distributed")</th><th class="num">@T("القيمة التقديرية", "Est. value")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var k in _items)
+                {
+                    <tr>
+                        <td><strong dir="ltr">@k.Number</strong><span>@Ui.Date(k.ReceivedAt)</span></td>
+                        <td><strong>@k.ItemDescription</strong><span>@k.Category · @k.Condition · @k.Location</span></td>
+                        <td>@k.ProjectNameAr</td>
+                        <td>@k.Quantity.ToString("0.##") @k.Unit</td>
+                        <td>@k.DistributedQuantity.ToString("0.##")</td>
+                        <td class="num"><Money Value="k.EstimatedValue" />@if (k.ValuationApproved) { <span>@T("معتمدة", "Approved")</span> }</td>
+                        <td><StatusPill Css="@(k.Status == InKindStatus.Distributed ? "neutral" : k.Status == InKindStatus.ValuationPending ? "warning" : "success")">@InKindText(k.Status)</StatusPill></td>
+                        <td class="actions">
+                            @if (!k.ValuationApproved && k.EstimatedValue > 0 && Can(Perm.InKindApproveValuation)) { <button class="primary-btn btn-sm" disabled="@Busy" @onclick="() => ApproveValue(k.Id)">@T("اعتماد التقييم", "Approve value")</button> }
+                            @if (Can(Perm.InKindManage) && k.DistributedQuantity < k.Quantity) { <button class="secondary-btn btn-sm" @onclick="() => OpenDistribute(k)">@T("صرف", "Distribute")</button> }
+                            @if (Can(Perm.InKindManage)) { <button class="icon-btn sm" @onclick="() => Edit(k)"><Icon Name="pencil-line" /></button> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal @bind-Open="_open" Title="@T("تبرع عيني", "In-kind donation")" Wide="true">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="full"><DonorPicker Label="@T("المتبرع (اختياري)", "Donor (optional)")" Search="SearchDonors" @bind-Selected="_donor" /></div>
+            <div class="field"><label class="req">@T("المشروع", "Project")</label>
+                <select @bind="_k.ProjectId"><option value="0">—</option>@foreach (var e in _projects) { <option value="@e.ProjectId">@e.ProjectCode — @Ui.N(e.NameAr, e.NameEn)</option> }</select></div>
+            <div class="field"><label class="req">@T("وصف الصنف", "Item description")</label><input @bind="_k.ItemDescription" /></div>
+            <div class="field"><label>@T("التصنيف", "Category")</label><input @bind="_k.Category" /></div>
+            <div class="field"><label>@T("الحالة", "Condition")</label><input @bind="_k.Condition" /></div>
+            <div class="field"><label class="req">@T("الكمية", "Quantity")</label><input type="number" step="0.01" @bind="_k.Quantity" dir="ltr" /></div>
+            <div class="field"><label>@T("الوحدة", "Unit")</label><input @bind="_k.Unit" /></div>
+            <div class="field"><label>@T("موقع التخزين", "Storage location")</label><input @bind="_k.Location" /></div>
+            <div class="field"><label>@T("تاريخ الانتهاء", "Expiry date")</label><input type="date" @bind="_k.ExpiryDate" /></div>
+            <div class="field"><label>@T("القيمة التقديرية", "Estimated value")</label><input type="number" step="0.01" @bind="_k.EstimatedValue" dir="ltr" disabled="@_k.ValuationApproved" /></div>
+            <div class="field"><label>@T("أساس التقييم", "Valuation basis")</label><input @bind="_k.ValuationBasis" disabled="@_k.ValuationApproved" /></div>
+            <div class="field full"><label>@T("ملاحظات التخزين", "Storage notes")</label><textarea @bind="_k.StorageNotes"></textarea></div>
+        </div>
+    </ChildContent>
+    <Footer><button class="secondary-btn" @onclick="() => _open = false">@T("إلغاء", "Cancel")</button><button class="primary-btn" disabled="@Busy" @onclick="Save">@T("حفظ", "Save")</button></Footer>
+</Modal>
+<Modal @bind-Open="_distOpen" Title="@T("صرف من المخزن", "Distribute from stock")">
+    <ChildContent><div class="field"><label class="req">@T("الكمية المصروفة", "Quantity")</label><input type="number" step="0.01" @bind="_qty" dir="ltr" /></div></ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Distribute">@T("تسجيل الصرف", "Record distribution")</button></Footer>
+</Modal>
+@code {
+    private List<InKindDonation> _items = [];
+    private List<ProjectCatalogEntry> _projects = [];
+    private bool _open, _distOpen;
+    private InKindDonation _k = new();
+    private Donor? _donor;
+    private int _distId; private decimal _qty;
+
+    protected override async Task LoadAsync()
+    {
+        _items = await S<InKindService>().ListAsync();
+        _projects = await S<CatalogService>().EntriesAsync(false);
+    }
+    private string InKindText(InKindStatus s) => s switch
+    {
+        InKindStatus.Received => T("مستلم", "Received"), InKindStatus.ValuationPending => T("بانتظار اعتماد التقييم", "Valuation pending"), InKindStatus.Valued => T("مُقيّم", "Valued"),
+        InKindStatus.InStock => T("في المخزن", "In stock"), _ => T("موزع بالكامل", "Distributed")
+    };
+    private Task<List<Donor>> SearchDonors(string q) => S<DonorService>().SearchAsync(q, take: 8);
+    private void New() { _k = new InKindDonation { Unit = "قطعة" }; _donor = null; _open = true; }
+    private void Edit(InKindDonation k) { _k = k; _donor = k.Donor; _open = true; }
+    private void OpenDistribute(InKindDonation k) { _distId = k.Id; _qty = k.Quantity - k.DistributedQuantity; _distOpen = true; }
+    private Task ApproveValue(int id) => Run(() => S<InKindService>().ApproveValuationAsync(id), "اعتُمد التقييم", "Valuation approved");
+    private async Task Save() { _k.DonorId = _donor?.Id; if (await Run(() => S<InKindService>().SaveAsync(_k), "تم الحفظ", "Saved")) _open = false; }
+    private async Task Distribute() { if (await Run(() => S<InKindService>().DistributeAsync(_distId, _qty), "تم تسجيل الصرف", "Distribution recorded")) _distOpen = false; }
+}

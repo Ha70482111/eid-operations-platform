@@ -1,0 +1,233 @@
+@page "/collections"
+@attribute [Authorize(Policy = Perm.CollectUse)]
+@inherits EidPage
+@inject DonationCart Cart
+
+<PageTitle>@T("مساحة التحصيل", "Collections workspace")</PageTitle>
+<div class="page collections-page">
+    <PageHeader Eyebrow="C01 · C02 · C03 · C04" Title="@T("مساحة التحصيل", "Collections workspace")"
+                Subtitle="@T("اختر مشاريع مؤهلة وأنشئ تبرعًا موثقًا بخطوات واضحة.", "Select eligible projects and create a documented donation in clear steps.")">
+        <Actions>
+            <a class="secondary-btn" href="/collections/transactions?mine=1"><Icon Name="clock-3" />@T("آخر السندات", "Recent receipts")</a>
+            <button class="primary-btn" @onclick="NewDonation"><Icon Name="plus" />@T("تبرع جديد", "New donation")</button>
+        </Actions>
+    </PageHeader>
+
+    @if (_stats is not null)
+    {
+        <section class="metric-strip">
+            <Metric Label="@T("تحصيل اليوم", "Today")" Value="@Ui.Money(_stats.Today)" Note="@T($"{_stats.TodayCount} عملية", $"{_stats.TodayCount} transactions")" IconName="banknote" />
+            <Metric Label="@T("صافي الشهر", "Net this month")" Value="@Ui.Money(_stats.NetMonth)" Note="@T($"المسترد {Ui.Money(_stats.RefundsMonth)}", $"Refunded {Ui.Money(_stats.RefundsMonth)}")" IconName="badge-check" />
+            <Metric Label="@T("قيد التحقق", "Pending")" Value="@Ui.Money(_stats.Pending)" Note="@T($"{_stats.PendingCount} عملية", $"{_stats.PendingCount} transactions")" IconName="clock-3" Warn="true" />
+            <Metric Label="@T("العهدة النقدية", "Cash custody")" Value="@Ui.Money(_stats.CashCustody)" Note="@T("تُسلم ضمن كشف الإيداع اليومي", "Hand over in today's deposit sheet")" IconName="wallet-cards" Warn="@(_stats.CashCustody > 0)" />
+        </section>
+    }
+
+    <div class="workspace-grid">
+        <section class="project-area">
+            <div class="toolbar">
+                <div class="search-field">
+                    <Icon Name="search" />
+                    <input value="@_search" @oninput="OnSearch" placeholder="@T("ابحث باسم المشروع أو البرنامج أو الرمز…", "Search projects, programs or codes…")" />
+                </div>
+                <button class="filter-btn @(_favOnly ? "active" : "")" @onclick="ToggleFavOnly"><Icon Name="star" />@T("المفضلة", "Favorites")</button>
+                <button class="filter-btn @(_ordering ? "active" : "")" @onclick="() => _ordering = !_ordering"><Icon Name="grip-vertical" />@(_ordering ? T("إنهاء الترتيب", "Done ordering") : T("ترتيبي", "My order"))</button>
+                @if (_ordering) { <button class="filter-btn" @onclick="ResetOrder"><Icon Name="rotate-ccw" />@T("الترتيب الافتراضي", "Default order")</button> }
+            </div>
+            <div class="section-title">
+                <div>
+                    <h2>@T("المشاريع المتاحة", "Available projects")</h2>
+                    <p>@T("التحصيل على مستوى المشروع فقط — تظهر فقط المشاريع المعتمدة ماليًا", "Collections are on projects only — only finance-approved projects appear")</p>
+                </div>
+                <span>@_cards.Count @T("مشاريع", "projects")</span>
+            </div>
+            <PageState Loading="Loading" Error="@Error" Empty="@(_cards.Count == 0)" EmptyAr="لا توجد مشاريع مطابقة" EmptyEn="No matching projects">
+                <div class="project-grid">
+                    @foreach (var c in _cards)
+                    {
+                        var e = c.Entry;
+                        var pct = e.CollectionCap > 0 ? Math.Min(100, c.Raised / e.CollectionCap * 100) : 0;
+                        var quick = e.QuickAmounts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(s => decimal.TryParse(s, out var v) ? v : 0).Where(v => v > 0).ToList();
+                        var selected = _amounts.GetValueOrDefault(e.ProjectId, quick.Count > 1 ? quick[1] : quick.FirstOrDefault());
+                        <article class="project-card @(c.Eligible ? "" : "disabled")" @key="e.ProjectId">
+                            <div class="project-visual @e.Visual">
+                                <span class="program-tag">@Ui.N(e.ProgramNameAr, e.ProgramNameEn)</span>
+                                @if (_ordering)
+                                {
+                                    <span class="favorite on" style="display:flex;gap:2px;width:auto;padding:0 4px">
+                                        <button class="icon-btn sm" @onclick="() => Move(e.ProjectId, -1)" aria-label="Up"><Icon Name="chevron-up" /></button>
+                                        <button class="icon-btn sm" @onclick="() => Move(e.ProjectId, 1)" aria-label="Down"><Icon Name="chevron-down" /></button>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <button class="favorite @(c.IsFavorite ? "on" : "")" @onclick="() => ToggleFavorite(e.ProjectId)" aria-label="@T("مفضلة", "Favorite")"><Icon Name="star" /></button>
+                                }
+                                <div class="project-glyph"><Icon Name="@Glyph(e.Visual)" /></div>
+                            </div>
+                            <div class="project-body">
+                                <div class="project-meta"><span>@Ui.N(e.CenterNameAr, e.CenterNameEn)</span><span dir="ltr">@e.ProjectCode</span></div>
+                                <h3>@Ui.N(e.NameAr, e.NameEn)</h3>
+                                <div class="progress-row">
+                                    <div><span>@T("تم تحصيل", "Raised")</span><strong>@Ui.Money(c.Raised) <small>@Ui.Cur</small></strong></div>
+                                    <span>@((int)pct)%</span>
+                                </div>
+                                <div class="progress"><i style="width:@(pct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></i></div>
+                                @if (!c.Eligible)
+                                {
+                                    <div class="blocked-reason"><Icon Name="lock-keyhole" />@(Ui.IsAr ? c.ReasonAr : c.ReasonEn ?? c.ReasonAr ?? T("غير متاح للتحصيل", "Not available for collection"))</div>
+                                }
+                                else
+                                {
+                                    <div class="quick-amounts">
+                                        @foreach (var a in quick.Take(4))
+                                        {
+                                            <button class="@(selected == a && !_custom.ContainsKey(e.ProjectId) ? "selected" : "")" @onclick="() => Pick(e.ProjectId, a)">@Ui.Money(a)</button>
+                                        }
+                                    </div>
+                                    <div class="amount-row">
+                                        <label>
+                                            <span>@T("مبلغ آخر", "Other")</span>
+                                            <input inputmode="decimal" dir="ltr" value="@_custom.GetValueOrDefault(e.ProjectId)" @onchange="ev => Custom(e.ProjectId, ev.Value?.ToString())" />
+                                            <b>@Ui.Cur</b>
+                                        </label>
+                                        <button @onclick="() => Add(c, selected)" aria-label="@T("إضافة للتبرع", "Add to donation")" title="@T("إضافة للتبرع", "Add to donation")"><Icon Name="plus" /></button>
+                                    </div>
+                                    <small class="muted" style="font-size:10px;display:block;margin-top:6px">@T("المتبقي من السقف:", "Remaining cap:") <Money Value="c.RemainingCap" /></small>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            </PageState>
+        </section>
+
+        <aside class="cart-panel">
+            <div class="cart-title">
+                <div>
+                    <Icon Name="receipt-text" />
+                    <span><strong>@T("ملخص التبرع", "Donation summary")</strong><small>@Cart.Draft.Lines.Count @T("مشاريع", "projects")</small></span>
+                </div>
+                @if (Cart.Draft.Lines.Count > 0) { <button @onclick="() => Cart.ClearAsync()">@T("مسح", "Clear")</button> }
+            </div>
+            @if (Cart.Draft.Lines.Count == 0)
+            {
+                <div class="empty-cart">
+                    <div><Icon Name="hand-coins" /></div>
+                    <h3>@T("ابدأ باختيار مشروع", "Start by selecting a project")</h3>
+                    <p>@T("اختر مبلغًا سريعًا أو أدخل مبلغًا آخر ثم أضفه للتبرع.", "Choose a quick amount or enter another value, then add it.")</p>
+                </div>
+            }
+            else
+            {
+                <div class="cart-content">
+                    <div class="cart-items">
+                        @foreach (var item in Cart.Draft.Lines)
+                        {
+                            <div class="cart-item" @key="item.ProjectId">
+                                <div><span>@Ui.N(item.NameAr, item.NameEn)</span><small dir="ltr">@item.Code</small></div>
+                                <strong>@Ui.Money(item.Amount) <small>@Ui.Cur</small></strong>
+                                <button @onclick="() => Cart.RemoveAsync(item.ProjectId)" aria-label="@T("حذف", "Remove")"><Icon Name="x" /></button>
+                            </div>
+                        }
+                    </div>
+                    <div class="cart-total"><span>@T("الإجمالي", "Total")</span><strong>@Ui.Money(Cart.Draft.Total) <small>@Ui.Cur</small></strong></div>
+                    <a class="checkout-btn" href="/collections/checkout">@T("متابعة بيانات المتبرع", "Continue to donor details")<Icon Name="@(Ui.IsAr ? "arrow-left" : "arrow-right")" /></a>
+                    <p class="secure-note"><Icon Name="shield-check" />@T("سيتم التحقق من الأهلية والسقف قبل التأكيد", "Eligibility and cap will be rechecked before confirmation")</p>
+                </div>
+            }
+        </aside>
+    </div>
+</div>
+
+@code {
+    private CollectorStats? _stats;
+    private List<ProjectCard> _cards = [];
+    private string _search = "";
+    private bool _favOnly, _ordering;
+    private readonly Dictionary<int, decimal> _amounts = new();
+    private readonly Dictionary<int, string> _custom = new();
+    private CancellationTokenSource? _debounce;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Cart.Changed += CartChanged;
+    }
+
+    private void CartChanged() => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await Cart.LoadAsync();
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _stats = await S<CollectionStatsService>().ForMeAsync();
+        await LoadCards();
+    }
+
+    private async Task LoadCards() => _cards = await S<CatalogService>().CardsAsync(_search, null, null, _favOnly);
+
+    private static string Glyph(string visual) => visual switch
+    {
+        "school" => "graduation-cap", "health" => "heart", "home" => "house", "water" => "droplets", _ => "hand-coins"
+    };
+
+    private async Task OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        var token = _debounce.Token;
+        try { await Task.Delay(300, token); } catch (TaskCanceledException) { return; }
+        await LoadCards();
+    }
+
+    private async Task ToggleFavOnly() { _favOnly = !_favOnly; await LoadCards(); }
+
+    private void Pick(int projectId, decimal amount) { _amounts[projectId] = amount; _custom.Remove(projectId); }
+
+    private void Custom(int projectId, string? text)
+    {
+        if (decimal.TryParse(text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0)
+        { _custom[projectId] = text!; _amounts[projectId] = v; }
+        else _custom.Remove(projectId);
+    }
+
+    private async Task Add(ProjectCard c, decimal amount)
+    {
+        if (!c.Eligible) { Toast.Show(T("تعذر الإضافة: المشروع غير متاح للتحصيل.", "Cannot add: project is not available for collection."), "error"); return; }
+        if (amount <= 0) { Toast.Show(T("أدخل مبلغًا صحيحًا أكبر من صفر.", "Enter a valid amount greater than zero."), "error"); return; }
+        if (amount > c.RemainingCap) { Toast.Show(T($"المبلغ يتجاوز المتبقي من السقف ({Ui.Money(c.RemainingCap)}).", $"Amount exceeds the remaining cap ({Ui.Money(c.RemainingCap)})."), "error"); return; }
+        await Cart.SetLineAsync(new DraftLine { ProjectId = c.Entry.ProjectId, NameAr = c.Entry.NameAr, NameEn = c.Entry.NameEn, Code = c.Entry.ProjectCode, Amount = amount });
+        Toast.Show(T($"أضيف مبلغ {Ui.Money(amount)} ر.ق إلى {c.Entry.NameAr}", $"QAR {Ui.Money(amount)} added to {c.Entry.NameEn}"));
+    }
+
+    private Task ToggleFavorite(int projectId) => Run(async () => { await S<CatalogService>().ToggleFavoriteAsync(projectId); await LoadCards(); }, reload: false);
+
+    private async Task Move(int projectId, int delta)
+    {
+        var ids = _cards.Select(c => c.Entry.ProjectId).ToList();
+        var i = ids.IndexOf(projectId);
+        var j = i + delta;
+        if (i < 0 || j < 0 || j >= ids.Count) return;
+        (ids[i], ids[j]) = (ids[j], ids[i]);
+        await Run(async () => { await S<CatalogService>().SaveOrderAsync(ids); await LoadCards(); }, reload: false);
+    }
+
+    private Task ResetOrder() => Run(async () => { await S<CatalogService>().ResetOrderAsync(); await LoadCards(); }, "تمت استعادة الترتيب الافتراضي", "Default order restored", reload: false);
+
+    private async Task NewDonation()
+    {
+        if (Cart.Draft.Lines.Count > 0) { Nav.NavigateTo("/collections/checkout"); return; }
+        Toast.Show(T("اختر مشروعًا ومبلغًا لبدء تبرع جديد.", "Pick a project and amount to start a new donation."), "info");
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { Cart.Changed -= CartChanged; _debounce?.Cancel(); }
+        base.Dispose(disposing);
+    }
+}

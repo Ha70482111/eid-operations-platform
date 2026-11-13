@@ -1,0 +1,16 @@
+@inherits EidPage
+<section class="data-card">
+    <div class="card-head">
+        <div><h2>@T("طلبات الصرف للمشروع", "Project disbursements")</h2><p>@T("لا يُعتمد صرف يتجاوز المتاح من التمويل المؤكد أو المتبقي من البند.", "No approval beyond confirmed funding available or the line remainder.")</p></div>
+        @if (Can(Perm.DisbCreate) && !Closed) { <a class="secondary-btn btn-sm" href="/projects/disbursements/new?project=@ProjectId"><Icon Name="plus" />@T("طلب صرف", "New request")</a> }
+    </div>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)" EmptyAr="لا توجد طلبات صرف" EmptyEn="No disbursement requests">
+        <DisbursementTable Items="_items" />
+    </PageState>
+</section>
+@code {
+    [Parameter] public int ProjectId { get; set; }
+    [Parameter] public bool Closed { get; set; }
+    private List<DisbursementRow> _items = [];
+    protected override async Task LoadAsync() => _items = await S<DisbursementService>().ListAsync(null, ProjectId);
+}

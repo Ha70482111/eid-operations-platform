@@ -1,0 +1,56 @@
+@page "/account/login"
+@layout EidCharity.Web.Components.Layout.EmptyLayout
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@inject Ui Ui
+
+<PageTitle>@Ui.T("تسجيل الدخول — عيد الخيرية", "Sign in — Eid Charity")</PageTitle>
+
+<div class="login-root" dir="@Ui.Dir">
+    <section class="login-side">
+        <div>
+            <div class="brand-mark"><img src="eid-charity-logo.png" alt="@Ui.T("شعار مؤسسة عيد الخيرية", "Eid Charity logo")" /></div>
+            <h2>@Ui.T("منصة العمليات الموحدة", "Unified operations platform")</h2>
+            <p>@Ui.T("إدارة المشاريع الداخلية من التسجيل حتى الإقفال، وتحصيل التبرعات بسندات موثقة مرتبطة بالتراخيص والبنود المالية.",
+                     "Manage internal projects from registration to closure, and collect donations with documented receipts tied to licenses and financial items.")</p>
+            <ul>
+                <li><Icon Name="shield-check" />@Ui.T("صلاحيات دقيقة حسب الدور والمركز", "Fine-grained permissions by role and center")</li>
+                <li><Icon Name="history" />@Ui.T("سجل إجراءات كامل لا يمكن تعديله", "Complete, tamper-proof audit trail")</li>
+                <li><Icon Name="badge-check" />@Ui.T("تحقق حي من الأهلية والسقوف قبل كل تأكيد", "Live eligibility and cap checks before every confirmation")</li>
+            </ul>
+        </div>
+        <p>© @DateTime.UtcNow.Year @Ui.T("مؤسسة عيد بن محمد آل ثاني الخيرية", "Eid Bin Mohammed Al Thani Charitable Foundation")</p>
+    </section>
+    <section class="login-main" style="position:relative">
+        <button type="button" class="lang-btn login-lang" data-lang-toggle><Icon Name="languages" />@(Ui.IsAr ? "English" : "العربية")</button>
+        <div class="login-card">
+            <h1 tabindex="-1">@Ui.T("تسجيل الدخول", "Sign in")</h1>
+            <p>@Ui.T("استخدم حسابك في المؤسسة للمتابعة.", "Use your foundation account to continue.")</p>
+            @if (Error == "locked")
+            {
+                <div class="notice-box danger"><Icon Name="lock-keyhole" />@Ui.T("تم قفل الحساب مؤقتًا بعد عدة محاولات فاشلة. حاول بعد 15 دقيقة أو تواصل مع مدير النظام.", "The account is temporarily locked after several failed attempts. Try again in 15 minutes or contact the administrator.")</div>
+            }
+            else if (!string.IsNullOrEmpty(Error))
+            {
+                <div class="notice-box danger"><Icon Name="circle-alert" />@Ui.T("اسم المستخدم أو كلمة المرور غير صحيحة.", "Incorrect username or password.")</div>
+            }
+            <form method="post" action="/account/signin" data-enhance="false">
+                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                <div class="field">
+                    <label for="u">@Ui.T("اسم المستخدم", "Username")</label>
+                    <input id="u" name="username" autocomplete="username" required autofocus dir="ltr" />
+                </div>
+                <div class="field">
+                    <label for="p">@Ui.T("كلمة المرور", "Password")</label>
+                    <input id="p" name="password" type="password" autocomplete="current-password" required dir="ltr" />
+                </div>
+                <button class="primary-btn" type="submit">@Ui.T("دخول", "Sign in")<Icon Name="@(Ui.IsAr ? "arrow-left" : "arrow-right")" /></button>
+            </form>
+        </div>
+    </section>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+}

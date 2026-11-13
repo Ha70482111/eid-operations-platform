@@ -1,0 +1,116 @@
+@page "/projects/licenses"
+@attribute [Authorize(Policy = Perm.LicensesView)]
+@inherits EidPage
+
+<PageTitle>@T("التراخيص", "Licenses")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="P07" Title="@T("إدارة التراخيص", "License management")" Subtitle="@T("السقف المشترك يُراقب مرة واحدة على مستوى الترخيص، والمعاملات المعلقة تحجز جزءًا منه حتى تأكيدها أو إلغائها.", "A shared cap is watched once at license level; pending transactions hold part of it until confirmed or cancelled.")">
+        <Actions>@if (Can(Perm.LicensesManage)) { <button class="primary-btn" @onclick="New"><Icon Name="plus" />@T("ترخيص جديد", "New license")</button> }</Actions>
+    </PageHeader>
+    <section class="data-card">
+        <div class="toolbar">
+            <div class="search-field"><Icon Name="search" /><input @bind="_q" @bind:event="oninput" @bind:after="Reload" placeholder="@T("رقم الترخيص أو الغرض أو الجهة…", "License no., purpose or issuer…")" /></div>
+            <label class="check"><input type="checkbox" @bind="_all" @bind:after="Reload" />@T("إظهار النسخ السابقة", "Show superseded")</label>
+        </div>
+        <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+            <div class="table-wrap"><table>
+                <thead><tr><th>@T("الترخيص", "License")</th><th>@T("النطاق", "Scope")</th><th>@T("السريان / التحصيل", "Validity / collection")</th><th class="num">@T("السقف", "Cap")</th><th>@T("الاستخدام", "Usage")</th><th>@T("المشاريع", "Projects")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var r in _items)
+                    {
+                        var l = r.License;
+                        <tr>
+                            <td><strong dir="ltr">@l.Number</strong><span>@l.Purposes · v@(l.VersionNo)</span></td>
+                            <td>@(l.Scope == LicenseScope.ProgramAndProjects ? $"{T("برنامج", "Program")}: {(l.Program is null ? "" : Ui.Name(l.Program))}" : T("مشروع", "Project"))</td>
+                            <td dir="ltr">@Ui.Date(l.ValidFrom) → @Ui.Date(l.ValidTo)<span>@Ui.Date(l.CollectionFrom) → @Ui.Date(l.CollectionTo)</span></td>
+                            <td class="num"><Money Value="l.Cap" Currency="@l.Currency" /></td>
+                            <td style="min-width:150px">
+                                <div class="progress thin @(r.Usage.UsedPercent >= 100 ? "danger" : r.Usage.UsedPercent >= 80 ? "warn" : "")"><i style="width:@(Math.Min(100, r.Usage.UsedPercent).ToString(System.Globalization.CultureInfo.InvariantCulture))%"></i></div>
+                                <span>@r.Usage.UsedPercent% · @T("مؤكد", "conf.") @Ui.Money(r.Usage.Confirmed) · @T("معلق", "pend.") @Ui.Money(r.Usage.PendingHold)</span>
+                            </td>
+                            <td>@r.ProjectCount</td>
+                            <td><StatusPill Tone="StatusText.Of(r.Status)" />@if (r.Status == LicenseStatus.Active && r.DaysToExpiry <= 30) { <span>@T($"ينتهي خلال {r.DaysToExpiry} يومًا", $"expires in {r.DaysToExpiry} days")</span> }</td>
+                            <td class="actions">
+                                @if (Can(Perm.LicensesManage) && !l.IsSuperseded)
+                                {
+                                    <button class="icon-btn sm" title="@T("تعديل", "Edit")" @onclick="() => Edit(l)"><Icon Name="pencil-line" /></button>
+                                    <button class="icon-btn sm" title="@T("تجديد", "Renew")" @onclick="() => Renew(l)"><Icon Name="refresh-cw" /></button>
+                                    <button class="icon-btn sm" title="@(l.IsSuspended ? T("استئناف", "Resume") : T("إيقاف", "Suspend"))" @onclick="() => OpenSuspend(l)"><Icon Name="@(l.IsSuspended ? "circle-play" : "circle-pause")" /></button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table></div>
+        </PageState>
+    </section>
+</div>
+<Modal @bind-Open="_open" Title="@(_renewOf is not null ? T("تجديد الترخيص (نسخة جديدة)", "Renew license (new version)") : _in.Id == 0 ? T("ترخيص جديد", "New license") : T("تعديل الترخيص", "Edit license"))" Wide="true">
+    <ChildContent>
+        @if (_renewOf is not null) { <div class="notice-box"><Icon Name="info" />@T("التجديد ينشئ نسخة جديدة ويحفظ السابقة للتاريخ؛ تُراجع المالية الربط بعده.", "Renewal creates a new version and keeps the previous one for history; finance re-checks mappings.")</div> }
+        <div class="form-grid three">
+            <div class="field"><label class="req">@T("رقم الترخيص", "License number")</label><input @bind="_in.Number" dir="ltr" /></div>
+            <div class="field"><label>@T("الجهة المصدرة", "Issuer")</label><input @bind="_in.Issuer" /></div>
+            <div class="field"><label>@T("تاريخ الإصدار", "Issue date")</label><input type="date" @bind="_in.IssueDate" /></div>
+            <div class="field"><label class="req">@T("ساري من", "Valid from")</label><input type="date" @bind="_in.ValidFrom" /></div>
+            <div class="field"><label class="req">@T("ساري حتى", "Valid to")</label><input type="date" @bind="_in.ValidTo" /></div>
+            <div class="field"><label class="req">@T("السقف", "Cap")</label><input type="number" step="0.01" @bind="_in.Cap" dir="ltr" /></div>
+            <div class="field"><label class="req">@T("التحصيل من", "Collection from")</label><input type="date" @bind="_in.CollectionFrom" /></div>
+            <div class="field"><label class="req">@T("التحصيل حتى", "Collection to")</label><input type="date" @bind="_in.CollectionTo" /></div>
+            <div class="field"><label>@T("العملة", "Currency")</label><input @bind="_in.Currency" dir="ltr" /></div>
+            <div class="field"><label>@T("النطاق", "Scope")</label><select @bind="_in.Scope"><option value="@LicenseScope.Project">@T("مشروع محدد", "Specific project")</option><option value="@LicenseScope.ProgramAndProjects">@T("برنامج ومشاريعه (سقف مشترك)", "Program & its projects (shared cap)")</option></select></div>
+            @if (_in.Scope == LicenseScope.ProgramAndProjects)
+            {
+                <div class="field span-2"><label class="req">@T("البرنامج", "Program")</label><select @bind="_in.ProgramId"><option value="">—</option>@foreach (var p in _programs) { <option value="@p.Id">@p.Code — @Ui.N(p.NameAr, p.NameEn)</option> }</select></div>
+            }
+            <div class="field full"><label>@T("الأغراض", "Purposes")</label><input @bind="_in.Purposes" /></div>
+            <div class="field full"><label>@T("القنوات المسموحة", "Allowed channels")</label><input @bind="_in.Channels" /></div>
+            <div class="field full"><label>@T("الشروط", "Conditions")</label><textarea @bind="_in.Conditions"></textarea></div>
+        </div>
+    </ChildContent>
+    <Footer><button class="secondary-btn" @onclick="() => _open = false">@T("إلغاء", "Cancel")</button><button class="primary-btn" disabled="@Busy" @onclick="Save">@T("حفظ", "Save")</button></Footer>
+</Modal>
+<Modal @bind-Open="_suspOpen" Title="@T("إيقاف / استئناف الترخيص", "Suspend / resume license")">
+    <ChildContent><div class="field"><label class="req">@T("السبب", "Reason")</label><textarea @bind="_reason"></textarea></div></ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Suspend">@T("تأكيد", "Confirm")</button></Footer>
+</Modal>
+@code {
+    private List<LicenseRow> _items = [];
+    private List<ProgramRow> _programs = [];
+    private string _q = "";
+    private bool _all, _open, _suspOpen;
+    private LicenseInput _in = new();
+    private License? _renewOf, _suspTarget;
+    private string _reason = "";
+
+    protected override async Task LoadAsync()
+    {
+        _items = await S<LicenseService>().ListAsync(_q, _all);
+        if (Can(Perm.ProgramsView)) _programs = await S<ProjectService>().ListProgramsAsync();
+    }
+    private static LicenseInput From(License l) => new()
+    {
+        Id = l.Id, Number = l.Number, Issuer = l.Issuer, IssueDate = l.IssueDate, ValidFrom = l.ValidFrom, ValidTo = l.ValidTo, CollectionFrom = l.CollectionFrom,
+        CollectionTo = l.CollectionTo, Scope = l.Scope, ProgramId = l.ProgramId, Cap = l.Cap, Currency = l.Currency, Channels = l.Channels, Purposes = l.Purposes, Conditions = l.Conditions,
+    };
+    private void New() { _in = new LicenseInput(); _renewOf = null; _open = true; }
+    private void Edit(License l) { _in = From(l); _renewOf = null; _open = true; }
+    private void Renew(License l)
+    {
+        _renewOf = l; _in = From(l); _in.Id = 0; _in.Number = l.Number + "-R";
+        _in.ValidFrom = l.ValidTo.AddDays(1); _in.ValidTo = _in.ValidFrom.AddYears(1); _in.CollectionFrom = _in.ValidFrom; _in.CollectionTo = _in.ValidTo; _in.IssueDate = DateOnly.FromDateTime(QatarTime.Now);
+        _open = true;
+    }
+    private void OpenSuspend(License l) { _suspTarget = l; _reason = ""; _suspOpen = true; }
+    private async Task Save()
+    {
+        var ok = _renewOf is not null
+            ? await Run(() => S<LicenseService>().RenewAsync(_renewOf.Id, _in), "تم التجديد", "Renewed")
+            : await Run(() => S<LicenseService>().SaveAsync(_in), "تم حفظ الترخيص", "License saved");
+        if (ok) _open = false;
+    }
+    private async Task Suspend()
+    {
+        if (await Run(() => S<LicenseService>().SetSuspendedAsync(_suspTarget!.Id, !_suspTarget.IsSuspended, _reason), "تم التحديث", "Updated")) _suspOpen = false;
+    }
+}

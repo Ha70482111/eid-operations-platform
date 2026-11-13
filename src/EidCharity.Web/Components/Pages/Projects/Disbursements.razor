@@ -1,0 +1,31 @@
+@page "/projects/disbursements"
+@attribute [Authorize(Policy = Perm.DisbCreate + "," + Perm.DisbReview + "," + Perm.DisbFinanceCheck + "," + Perm.DisbApprove + "," + Perm.DisbExecute)]
+@inherits EidPage
+
+<PageTitle>@T("طلبات الصرف", "Disbursement requests")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="P14" Title="@T("طلبات الصرف", "Disbursement requests")" Subtitle="@T("مسودة ← مراجعة المختص ← التحقق المالي من التمويل ← الاعتماد والحجز ← التنفيذ الكلي أو الجزئي ← تحرير المتبقي.", "Draft → specialist review → finance funding check → approval & reservation → full/partial execution → release remainder.")">
+        <Actions>@if (Can(Perm.DisbCreate)) { <a class="primary-btn" href="/projects/disbursements/new"><Icon Name="plus" />@T("طلب صرف", "New request")</a> }</Actions>
+    </PageHeader>
+    <div class="tabs">
+        @foreach (var (s, ar, en) in Tabs)
+        {
+            <button class="@(_status == s ? "active" : "")" @onclick="() => SetStatus(s)">@T(ar, en)</button>
+        }
+    </div>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><DisbursementTable Items="_items" /></section>
+    </PageState>
+</div>
+@code {
+    private static readonly (DisbursementStatus?, string, string)[] Tabs =
+    [
+        (null, "الكل", "All"), (DisbursementStatus.Submitted, "بانتظار المراجعة", "Awaiting review"), (DisbursementStatus.UnderReview, "قيد التحقق/الاعتماد", "Checking/approval"),
+        (DisbursementStatus.ApprovedReserved, "معتمد ومحجوز", "Approved & reserved"), (DisbursementStatus.PartiallyExecuted, "منفذ جزئيًا", "Partially executed"),
+        (DisbursementStatus.FullyExecuted, "منفذ", "Executed"), (DisbursementStatus.ReturnedForEdit, "معاد للتعديل", "Returned"), (DisbursementStatus.Draft, "مسودات", "Drafts"),
+    ];
+    private DisbursementStatus? _status;
+    private List<DisbursementRow> _items = [];
+    protected override async Task LoadAsync() => _items = await S<DisbursementService>().ListAsync(_status, null);
+    private async Task SetStatus(DisbursementStatus? s) { _status = s; await Reload(); }
+}

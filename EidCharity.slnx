@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EidCharity.Application/EidCharity.Application.csproj" />
+    <Project Path="src/EidCharity.Domain/EidCharity.Domain.csproj" />
+    <Project Path="src/EidCharity.Infrastructure/EidCharity.Infrastructure.csproj" />
+    <Project Path="src/EidCharity.Web/EidCharity.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EidCharity.Tests/EidCharity.Tests.csproj" />
+  </Folder>
+</Solution>

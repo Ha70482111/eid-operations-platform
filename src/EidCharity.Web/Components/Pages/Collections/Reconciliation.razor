@@ -1,0 +1,76 @@
+@page "/collections/reconciliation"
+@attribute [Authorize(Policy = Perm.ReconciliationManage)]
+@inherits EidPage
+
+<PageTitle>@T("المطابقة المالية", "Reconciliation")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C22" Title="@T("المطابقة المالية", "Financial reconciliation")" Subtitle="@T("مطابقة التحويلات ونقاط البيع والقنوات الإلكترونية والرسوم مع كشوف البنك. الصافي المتوقع = المبلغ − الرسوم.", "Match transfers, POS, online channels and fees against bank statements. Expected net = amount − fees.")">
+        <Actions><button class="primary-btn" disabled="@Busy" @onclick="Generate"><Icon Name="refresh-cw" />@T("جلب العمليات غير المطابقة", "Pull unmatched transactions")</button></Actions>
+    </PageHeader>
+    <div class="toolbar">
+        <select class="input" style="width:auto" @bind="_channel" @bind:after="Reload">
+            <option value="">@T("كل القنوات", "All channels")</option>
+            @foreach (var c in Enum.GetValues<ReconChannel>()) { <option value="@c">@c</option> }
+        </select>
+        <div class="chips">
+            <button class="chip @(_status is null ? "active" : "")" @onclick="() => SetStatus(null)">@T("الكل", "All")</button>
+            @foreach (var s in Enum.GetValues<ReconStatus>()) { <button class="chip @(_status == s ? "active" : "")" @onclick="() => SetStatus(s)">@T(StatusText.Of(s).Ar, StatusText.Of(s).En)</button> }
+        </div>
+    </div>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("المرجع", "Reference")</th><th>@T("القناة", "Channel")</th><th class="num">@T("المتوقع", "Expected")</th><th class="num">@T("الرسوم", "Fee")</th><th class="num">@T("الفعلي", "Actual")</th><th>@T("الحالة", "Status")</th><th>@T("ملاحظة", "Note")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var r in _items)
+                {
+                    <tr>
+                        <td><strong dir="ltr">@r.ExternalReference</strong>@if (r.DonationId is not null) { <a href="/collections/transactions/@r.DonationId"><span>@T("العملية", "Transaction")</span></a> }</td>
+                        <td>@r.Channel</td>
+                        <td class="num"><Money Value="r.ExpectedAmount" ShowCurrency="false" /></td>
+                        <td class="num"><Money Value="r.Fee" ShowCurrency="false" /></td>
+                        <td class="num"><Money Value="r.ActualAmount" ShowCurrency="false" /></td>
+                        <td><StatusPill Tone="StatusText.Of(r.Status)" /></td>
+                        <td>@r.Note<span>@r.Responsible</span></td>
+                        <td class="actions">
+                            @if (r.Status is ReconStatus.Unmatched or ReconStatus.Difference) { <button class="secondary-btn btn-sm" @onclick="() => OpenMatch(r)">@T("مطابقة", "Match")</button> }
+                            @if (r.Status == ReconStatus.Difference) { <button class="secondary-btn btn-sm" @onclick="() => OpenResolve(r)">@T("معالجة", "Resolve")</button> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal @bind-Open="_matchOpen" Title="@T("مطابقة مع الكشف", "Match with statement")">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field"><label class="req">@T("المبلغ الوارد في الكشف", "Amount on statement")</label><input type="number" step="0.01" @bind="_actual" dir="ltr" /><span class="hint">@T("الصافي المتوقع", "Expected net"): @Ui.Money(_expectedNet)</span></div>
+            <div class="field full"><label>@T("ملاحظة (مطلوبة عند وجود فرق)", "Note (required if different)")</label><textarea @bind="_note"></textarea></div>
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Match">@T("حفظ", "Save")</button></Footer>
+</Modal>
+<Modal @bind-Open="_resolveOpen" Title="@T("معالجة الفرق", "Resolve difference")">
+    <ChildContent><div class="field"><label class="req">@T("وصف المعالجة", "Resolution")</label><textarea @bind="_note"></textarea></div></ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Resolve">@T("حفظ", "Save")</button></Footer>
+</Modal>
+@code {
+    private List<ReconciliationItem> _items = [];
+    private ReconChannel? _channel;
+    private ReconStatus? _status;
+    private bool _matchOpen, _resolveOpen;
+    private int _id; private decimal _actual, _expectedNet;
+    private string _note = "";
+
+    protected override async Task LoadAsync() => _items = await S<ReconciliationService>().ListAsync(_channel, _status);
+    private async Task SetStatus(ReconStatus? s) { _status = s; await Reload(); }
+    private async Task Generate()
+    {
+        var n = 0;
+        if (await Run(async () => n = await S<ReconciliationService>().GenerateAsync())) Toast.Show(T($"أُضيفت {n} عملية للمطابقة", $"{n} transactions added for matching"));
+    }
+    private void OpenMatch(ReconciliationItem r) { _id = r.Id; _expectedNet = r.ExpectedAmount - r.Fee; _actual = _expectedNet; _note = r.Note ?? ""; _matchOpen = true; }
+    private void OpenResolve(ReconciliationItem r) { _id = r.Id; _note = ""; _resolveOpen = true; }
+    private async Task Match() { if (await Run(() => S<ReconciliationService>().MatchAsync(_id, _actual, _note), "تم الحفظ", "Saved")) _matchOpen = false; }
+    private async Task Resolve() { if (await Run(() => S<ReconciliationService>().ResolveAsync(_id, _note), "تمت المعالجة", "Resolved")) _resolveOpen = false; }
+}

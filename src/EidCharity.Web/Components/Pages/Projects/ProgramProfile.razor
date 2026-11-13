@@ -1,0 +1,67 @@
+@page "/projects/programs/{Id:int}"
+@attribute [Authorize(Policy = Perm.ProgramsView)]
+@inherits EidPage
+
+<PageTitle>@T("ملف البرنامج", "Program profile")</PageTitle>
+<div class="page">
+    <PageState Loading="Loading" Error="@Error">
+        @if (_p is not null)
+        {
+            var row = _row;
+            <PageHeader Eyebrow="@($"P04 · {_p.Code}")" Title="@Ui.Name(_p)" Subtitle="@(Ui.IsAr ? _p.DescriptionAr : _p.DescriptionEn)">
+                <Actions>
+                    @if (Can(Perm.ProgramsManage)) { <button class="secondary-btn" @onclick="Edit"><Icon Name="pencil-line" />@T("تعديل", "Edit")</button> }
+                    @if (Can(Perm.ProjectsCreateLicensed)) { <a class="primary-btn" href="/projects/new?program=@_p.Id"><Icon Name="plus" />@T("مشروع ضمن البرنامج", "Project in this program")</a> }
+                </Actions>
+            </PageHeader>
+            <section class="metric-strip">
+                <Metric Label="@T("الميزانية المعتمدة", "Approved budget")" Value="@Ui.Money(_p.ApprovedBudget)" IconName="wallet-cards" />
+                <Metric Label="@T("موزع على المشاريع", "Allocated to projects")" Value="@Ui.Money(_p.Projects.Sum(x => x.ExecutionCost))" Note="@T($"احتياطي {Ui.Money(_p.UnallocatedReserve)}", $"Reserve {Ui.Money(_p.UnallocatedReserve)}")" IconName="layers" />
+                <Metric Label="@T("صافي المؤكد (من المشاريع)", "Confirmed net (from projects)")" Value="@Ui.Money(row?.Confirmed ?? 0)" IconName="badge-check" />
+                <Metric Label="@T("المشاريع", "Projects")" Value="@_p.Projects.Count.ToString()" Currency="false" Note="@Ui.Name(_p.Center!)" IconName="folder-kanban" />
+            </section>
+            <section class="data-card">
+                <div class="card-head"><div><h2>@T("مشاريع البرنامج", "Program projects")</h2><p>@T("التحصيل والصرف على مستوى المشروع فقط", "Collections and spending happen on projects only")</p></div></div>
+                <div class="table-wrap"><table>
+                    <thead><tr><th>@T("المشروع", "Project")</th><th>@T("المركز", "Center")</th><th>@T("الاعتماد", "Approval")</th><th>@T("التحصيل", "Collection")</th><th>@T("التنفيذ", "Execution")</th><th class="num">@T("تكلفة التنفيذ", "Execution cost")</th><th class="num">@T("سقف التحصيل", "Collection cap")</th></tr></thead>
+                    <tbody>
+                        @foreach (var x in _p.Projects.OrderBy(x => x.Code))
+                        {
+                            <tr class="clickable" @onclick="@(() => Nav.NavigateTo($"/projects/{x.Id}"))">
+                                <td><strong>@Ui.Name(x)</strong><span dir="ltr">@x.Code</span></td>
+                                <td>@(x.Center is null ? "" : Ui.Name(x.Center))</td>
+                                <td><StatusPill Tone="StatusText.Of(x.ApprovalStatus)" /></td>
+                                <td><StatusPill Tone="StatusText.Of(x.CollectionStatus)" /></td>
+                                <td><StatusPill Tone="StatusText.Of(x.ExecutionStatus)" /></td>
+                                <td class="num"><Money Value="x.ExecutionCost" ShowCurrency="false" /></td>
+                                <td class="num"><Money Value="x.CollectionCap" ShowCurrency="false" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table></div>
+            </section>
+        }
+    </PageState>
+</div>
+<ProgramEditor @bind-Open="_open" Model="_model" Centers="_centers" OnSave="Save" Busy="Busy" />
+@code {
+    [Parameter] public int Id { get; set; }
+    private CharityProgram? _p;
+    private ProgramRow? _row;
+    private bool _open;
+    private ProgramInput _model = new();
+    private List<Center> _centers = [];
+
+    protected override async Task LoadAsync()
+    {
+        _p = await S<ProjectService>().GetProgramAsync(Id);
+        _row = (await S<ProjectService>().ListProgramsAsync(_p.Code)).FirstOrDefault(r => r.Id == Id);
+    }
+    private async Task Edit()
+    {
+        _centers = await S<AdminService>().CentersAsync();
+        _model = new ProgramInput { Id = _p!.Id, NameAr = _p.NameAr, NameEn = _p.NameEn, DescriptionAr = _p.DescriptionAr, DescriptionEn = _p.DescriptionEn, CenterId = _p.CenterId, ApprovedBudget = _p.ApprovedBudget, UnallocatedReserve = _p.UnallocatedReserve, Currency = _p.Currency };
+        _open = true;
+    }
+    private async Task Save() { if (await Run(() => S<ProjectService>().SaveProgramAsync(_model), "تم حفظ البرنامج", "Program saved")) _open = false; }
+}

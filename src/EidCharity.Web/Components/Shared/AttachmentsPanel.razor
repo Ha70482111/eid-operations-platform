@@ -1,0 +1,64 @@
+@inherits EidPage
+<section class="data-card">
+    <div class="card-head">
+        <div><h2>@T("المرفقات", "Attachments")</h2><p>@T("تُحفظ كل نسخة ولا يُستبدل الملف السابق. PDF وصور ومستندات حتى 15 ميجابايت.", "Every version is kept; nothing is overwritten. PDF, images and documents up to 15 MB.")</p></div>
+    </div>
+    @if (CanUpload)
+    {
+        <div class="form-grid three" style="padding:14px 18px;align-items:end">
+            <div class="field"><label>@T("نوع المستند", "Document type")</label>
+                <select @bind="_cat">@foreach (var c in Enum.GetValues<AttachmentCategory>()) { <option value="@c">@CatName(c)</option> }</select></div>
+            <div class="field"><label>@T("الملف", "File")</label><InputFile OnChange="Upload" class="input" /></div>
+            <label class="check"><input type="checkbox" @bind="_sensitive" />@T("مستند حساس", "Sensitive document")</label>
+        </div>
+    }
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)" EmptyAr="لا توجد مرفقات" EmptyEn="No attachments">
+        <div class="table-wrap"><table>
+            <thead><tr><th>@T("الملف", "File")</th><th>@T("النوع", "Type")</th><th>@T("النسخة", "Version")</th><th>@T("الحجم", "Size")</th><th>@T("أُضيف", "Added")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var a in _items)
+                {
+                    <tr>
+                        <td><strong>@a.FileName</strong>@if (a.IsSensitive) { <StatusPill Css="danger">@T("حساس", "Sensitive")</StatusPill> }</td>
+                        <td>@CatName(a.Category)</td>
+                        <td>v@(a.Version)</td>
+                        <td dir="ltr">@((a.Size / 1024.0).ToString("0.#")) KB</td>
+                        <td dir="ltr">@Ui.DateTimeStr(a.CreatedAt)</td>
+                        <td class="actions"><a class="icon-btn sm" href="/files/@a.Id" target="_blank" title="@T("تنزيل", "Download")"><Icon Name="download" /></a></td>
+                    </tr>
+                }
+            </tbody>
+        </table></div>
+    </PageState>
+</section>
+@code {
+    [Parameter, EditorRequired] public string OwnerType { get; set; } = "";
+    [Parameter, EditorRequired] public int OwnerId { get; set; }
+    [Parameter] public bool CanUpload { get; set; }
+    private List<Attachment> _items = [];
+    private AttachmentCategory _cat = AttachmentCategory.Study;
+    private bool _sensitive;
+
+    protected override async Task LoadAsync() => _items = await S<AttachmentService>().ListAsync(OwnerType, OwnerId);
+
+    private string CatName(AttachmentCategory c) => c switch
+    {
+        AttachmentCategory.Study => T("دراسة المشروع", "Project study"), AttachmentCategory.License => T("مستند الترخيص", "License document"),
+        AttachmentCategory.Approval => T("موافقة", "Approval"), AttachmentCategory.Agreement => T("اتفاقية", "Agreement"), AttachmentCategory.Invoice => T("فاتورة", "Invoice"),
+        AttachmentCategory.Quotation => T("عرض سعر", "Quotation"), AttachmentCategory.ReceivingMinutes => T("محضر استلام", "Receiving minutes"),
+        AttachmentCategory.ExecutionReport => T("تقرير تنفيذ", "Execution report"), AttachmentCategory.Photo => T("صور", "Photos"),
+        AttachmentCategory.Authorization => T("تفويض", "Authorization"), AttachmentCategory.TransferProof => T("إثبات تحويل", "Transfer proof"),
+        AttachmentCategory.FinalReport => T("التقرير الختامي", "Final report"), _ => T("أخرى", "Other")
+    };
+
+    private async Task Upload(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f.Size > AttachmentService.MaxBytes) { Toast.Show(T("حجم الملف يتجاوز 15 ميجابايت.", "File exceeds 15 MB."), "error"); return; }
+        await Run(async () =>
+        {
+            await using var s = f.OpenReadStream(AttachmentService.MaxBytes);
+            await S<AttachmentService>().UploadAsync(OwnerType, OwnerId, _cat, s, f.Name, f.ContentType, f.Size, _sensitive, null);
+        }, "تم رفع الملف", "File uploaded");
+    }
+}

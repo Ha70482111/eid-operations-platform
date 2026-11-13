@@ -1,0 +1,350 @@
+@page "/collections/checkout"
+@attribute [Authorize(Policy = Perm.DonationsConfirm)]
+@inherits EidPage
+@inject DonationCart Cart
+
+<PageTitle>@T("إتمام التبرع", "Checkout")</PageTitle>
+@if (_result is not null)
+{
+    <div class="page">
+        <div class="success-card">
+            @if (_result.Status == DonationStatus.Confirmed)
+            {
+                <div class="success-icon"><Icon Name="check" /></div>
+                <span class="eyebrow">C12 · C15</span>
+                <h1>@T("تم استلام التبرع وإصدار السند", "Donation received and receipt issued")</h1>
+                <p>@T($"سند قبض واحد بقيمة {Ui.Money(_total)} ر.ق موزع على {_lines} بند ومتطابق مع الإجمالي.", $"One QAR {Ui.Money(_total)} receipt, allocated across {_lines} matching line(s).")</p>
+                <div class="receipt-number"><span>@T("رقم السند", "Receipt number")</span><strong dir="ltr">@_result.ReceiptNumber</strong></div>
+                <div class="success-actions">
+                    <a class="primary-btn" href="/collections/receipts/@_result.ReceiptId?print=1"><Icon Name="printer" />@T("طباعة السند", "Print receipt")</a>
+                    <a class="secondary-btn" href="/collections/transactions/@_result.DonationId">@T("تفاصيل العملية", "Transaction details")</a>
+                    <a class="secondary-btn" href="/collections">@T("العودة للمشاريع", "Back to projects")</a>
+                </div>
+            }
+            else if (_result.Status == DonationStatus.PendingVerification)
+            {
+                <div class="success-icon" style="background:#fff3dc;color:#9a691b"><Icon Name="clock-3" /></div>
+                <span class="eyebrow">C11 · C14</span>
+                <h1>@T("سُجلت العملية قيد التحقق", "Transaction recorded as pending verification")</h1>
+                <p>@T("لن يصدر سند قبض حتى يؤكد المختص وصول المبلغ. يُحجز المبلغ من السقف مؤقتًا.", "No receipt is issued until a specialist confirms arrival. The amount is held against the cap meanwhile.")</p>
+                <div class="receipt-number"><span>@T("رقم العملية", "Transaction number")</span><strong dir="ltr">@_result.Number</strong></div>
+                <div class="success-actions">
+                    <a class="secondary-btn" href="/collections/transactions/@_result.DonationId">@T("تفاصيل العملية", "Transaction details")</a>
+                    <a class="primary-btn" href="/collections">@T("العودة للمشاريع", "Back to projects")</a>
+                </div>
+            }
+            else
+            {
+                <div class="success-icon" style="background:#ffedeb;color:#a54743"><Icon Name="circle-x" /></div>
+                <h1>@T("لم تنجح عملية الدفع", "Payment was not successful")</h1>
+                <p>@T("لم يُصدر سند ولم يُحتسب أي مبلغ. يمكنك المحاولة مرة أخرى بطريقة دفع أخرى.", "No receipt was issued and nothing was counted. You can retry with another payment method.")</p>
+                <div class="receipt-number"><span>@T("رقم العملية", "Transaction number")</span><strong dir="ltr">@_result.Number</strong></div>
+                <div class="success-actions">
+                    <button class="primary-btn" @onclick="RetryAfterFailure">@T("المحاولة مرة أخرى", "Try again")</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <div class="page checkout-page">
+        <PageHeader Eyebrow="@($"C{(9 + _step):00}")" Title="@(_step == 1 ? T("بيانات المتبرع", "Donor details") : _step == 2 ? T("طريقة الدفع", "Payment method") : T("المراجعة النهائية", "Final review"))"
+                    Subtitle="@T("لن تُفقد مسودتك عند تبديل اللغة أو العودة للخطوة السابقة.", "Your draft is preserved when switching language or returning to a previous step.")" />
+        <div class="steps">
+            @foreach (var (s, i) in new[] { T("المتبرع", "Donor"), T("الدفع", "Payment"), T("المراجعة", "Review") }.Select((s, i) => (s, i)))
+            {
+                <div class="@(_step >= i + 1 ? "active" : "")"><i>@if (_step > i + 1) { <Icon Name="check" /> } else { @(i + 1) }</i><span>@s</span></div>
+            }
+        </div>
+        @if (D.Lines.Count == 0)
+        {
+            <StatePanel Kind="empty" TitleAr="لا توجد مشاريع في التبرع" TitleEn="No projects in this donation" TextAr="ارجع لمساحة التحصيل واختر مشروعًا ومبلغًا." TextEn="Go back to the workspace and choose a project and amount.">
+                <a class="primary-btn" href="/collections">@T("مساحة التحصيل", "Collections workspace")</a>
+            </StatePanel>
+        }
+        else
+        {
+            <div class="checkout-grid">
+                <section class="form-card">
+                    @if (_step == 1)
+                    {
+                        <h2>@T("البحث عن متبرع", "Find a donor")</h2>
+                        <div class="field">
+                            <label>@T("الاسم أو رقم الهاتف أو البريد أو رقم المتبرع", "Name, phone, email or donor number")</label>
+                            <div class="input-icon">
+                                <Icon Name="search" />
+                                <input value="@_donorSearch" @oninput="SearchDonors" placeholder="@T("ابدأ بالكتابة…", "Start typing…")" />
+                            </div>
+                        </div>
+                        @if (D.DonorId is not null)
+                        {
+                            <div class="donor-result" style="border-color:var(--green);background:var(--green-soft)">
+                                <div class="avatar">@Initial(D.DonorDisplay)</div>
+                                <div><strong>@D.DonorDisplay</strong><span>@T("المتبرع المختار", "Selected donor")</span></div>
+                                <StatusPill>@T("مختار", "Selected")</StatusPill>
+                            </div>
+                        }
+                        @foreach (var d in _donors.Where(x => x.Id != D.DonorId))
+                        {
+                            <button class="donor-result" @onclick="() => SelectDonor(d)">
+                                <div class="avatar">@Initial(d.DisplayName(Ui.IsAr))</div>
+                                <div>
+                                    <strong>@d.DisplayName(Ui.IsAr)</strong>
+                                    <span dir="ltr">@d.Number @(string.IsNullOrEmpty(d.Phone) ? "" : $" · {d.CountryCode} {Mask(d.Phone)}") @(string.IsNullOrEmpty(d.Email) ? "" : $" · {d.Email}")</span>
+                                </div>
+                                <StatusPill Css="@(d.Privacy == DonorPrivacy.Normal ? "success" : "neutral")">@(d.Type == DonorType.Organization ? T("جهة", "Organization") : T("فرد", "Individual"))</StatusPill>
+                            </button>
+                        }
+                        @if (Can(Perm.DonorsManage))
+                        {
+                            <button class="text-action" @onclick="OpenNewDonor"><Icon Name="plus" />@T("إنشاء متبرع جديد", "Create new donor")</button>
+                        }
+                        @if (_agreements.Count > 0)
+                        {
+                            <div class="field mt">
+                                <label>@T("سداد دفعة من اتفاقية نشطة (اختياري)", "Pay an installment of an active agreement (optional)")</label>
+                                <select @bind="D.AgreementId" @bind:after="SaveDraft">
+                                    <option value="">@T("— تبرع مستقل —", "— Separate donation —")</option>
+                                    @foreach (var a in _agreements)
+                                    {
+                                        <option value="@a.Id">@a.Number — @T("المتبقي", "remaining") @Ui.Money(a.Remaining)</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                    }
+                    else if (_step == 2)
+                    {
+                        <h2>@T("اختر طريقة الدفع", "Choose payment method")</h2>
+                        <div class="payment-options">
+                            @foreach (var (m, icon, ar, en) in Methods)
+                            {
+                                <button class="@(D.Method == m ? "selected" : "")" @onclick="() => SetMethod(m)">
+                                    <Icon Name="@icon" /><span>@T(ar, en)</span>
+                                    @if (D.Method == m) { <Icon Name="circle-check" /> }
+                                </button>
+                            }
+                        </div>
+                        <div class="form-grid mt">
+                            @switch (D.Method)
+                            {
+                                case PaymentMethod.Cash:
+                                    <div class="full info-box"><Icon Name="shield-check" /><div><strong>@T("سيضاف المبلغ إلى عهدتك النقدية", "Amount will be added to your cash custody")</strong><span>@T("يلزم التسليم للخزينة ضمن كشف الإيداع اليومي.", "Treasury handover is required in today's deposit sheet.")</span></div></div>
+                                    break;
+                                case PaymentMethod.BankTransfer:
+                                    <div class="full warning-box"><Icon Name="clock-3" /><div><strong>@T("لن يصدر السند فورًا", "Receipt will not be issued immediately")</strong><span>@T("تبقى العملية قيد التحقق حتى يؤكد المختص وصول المبلغ.", "Transaction stays pending until a specialist confirms receipt.")</span></div></div>
+                                    <div class="field"><label class="req">@T("مرجع التحويل", "Transfer reference")</label><input @bind="D.PaymentReference" @bind:after="SaveDraft" dir="ltr" /></div>
+                                    <div class="field"><label class="req">@T("البنك", "Bank")</label><input @bind="D.BankName" @bind:after="SaveDraft" /></div>
+                                    <div class="field"><label class="req">@T("تاريخ التحويل", "Transfer date")</label><input type="date" @bind="D.TransferDate" @bind:after="SaveDraft" /></div>
+                                    break;
+                                case PaymentMethod.Pos:
+                                    <div class="field"><label class="req">@T("رقم الجهاز", "Terminal")</label><input @bind="D.PosTerminal" @bind:after="SaveDraft" dir="ltr" /></div>
+                                    <div class="field"><label class="req">@T("مرجع العملية", "Approval reference")</label><input @bind="D.PaymentReference" @bind:after="SaveDraft" dir="ltr" /></div>
+                                    <div class="field"><label class="req">@T("نتيجة الجهاز", "Terminal result")</label>
+                                        <select @bind="D.ChannelResult" @bind:after="SaveDraft"><option value="">—</option><option value="Approved">@T("مقبولة", "Approved")</option><option value="Declined">@T("مرفوضة", "Declined")</option></select></div>
+                                    break;
+                                case PaymentMethod.Online:
+                                    <div class="field"><label class="req">@T("مرجع البوابة", "Gateway reference")</label><input @bind="D.PaymentReference" @bind:after="SaveDraft" dir="ltr" /></div>
+                                    <div class="field"><label class="req">@T("نتيجة البوابة", "Gateway result")</label>
+                                        <select @bind="D.ChannelResult" @bind:after="SaveDraft"><option value="">—</option><option value="Success">@T("ناجحة", "Success")</option><option value="Pending">@T("معلقة", "Pending")</option><option value="Failed">@T("فاشلة", "Failed")</option></select></div>
+                                    <div class="field"><label>@T("رسوم القناة", "Channel fee")</label><input type="number" step="0.01" min="0" @bind="D.ChannelFee" @bind:after="SaveDraft" dir="ltr" /></div>
+                                    break;
+                            }
+                            <div class="field"><label>@T("نقطة التحصيل", "Collection point")</label><input @bind="D.CollectionPoint" @bind:after="SaveDraft" placeholder="@T("مثال: فرع الدوحة — الكاونتر 2", "e.g. Doha branch — counter 2")" /></div>
+                            <div class="field full"><label>@T("ملاحظات", "Notes")</label><textarea @bind="D.Notes" @bind:after="SaveDraft"></textarea></div>
+                        </div>
+                    }
+                    else
+                    {
+                        <h2>@T("راجع قبل التأكيد", "Review before confirmation")</h2>
+                        <div class="review-line"><span>@T("المتبرع", "Donor")</span><strong>@D.DonorDisplay</strong><button @onclick="() => _step = 1" aria-label="Edit"><Icon Name="pencil-line" /></button></div>
+                        <div class="review-line"><span>@T("طريقة الدفع", "Payment")</span><strong>@MethodName(D.Method) @(string.IsNullOrEmpty(D.PaymentReference) ? "" : $"· {D.PaymentReference}")</strong><button @onclick="() => _step = 2" aria-label="Edit"><Icon Name="pencil-line" /></button></div>
+                        <div class="allocation-table">
+                            @foreach (var l in D.Lines)
+                            {
+                                <div><span>@Ui.N(l.NameAr, l.NameEn)<small dir="ltr">@l.Code</small></span><strong>@Ui.Money(l.Amount) @Ui.Cur</strong></div>
+                            }
+                        </div>
+                        <div class="validation-ok"><Icon Name="circle-check" />@T("سيُعاد التحقق الحي من الإتاحة والترخيص والسقف لحظة التأكيد، ويُخصص كل بند على الترخيص الأقرب انتهاءً.", "Availability, license and cap are re-checked live at confirmation; each line is allocated to the earliest-expiring license.")</div>
+                    }
+                    <div class="form-actions">
+                        @if (_step > 1) { <button class="secondary-btn" @onclick="() => _step--">@T("السابق", "Back")</button> }
+                        <button class="primary-btn" disabled="@(Busy || !CanContinue)" @onclick="Next">
+                            @if (Busy) { <Icon Name="refresh-cw" Class="spin" />@T("جارٍ المعالجة…", "Processing…") }
+                            else if (_step == 3) { @T("تأكيد واستلام", "Confirm & receive") }
+                            else { @T("متابعة", "Continue") }
+                        </button>
+                    </div>
+                </section>
+                <aside class="order-summary">
+                    <h3>@T("ملخص التبرع", "Donation summary")</h3>
+                    @foreach (var l in D.Lines)
+                    {
+                        <div><span>@Ui.N(l.NameAr, l.NameEn)</span><strong>@Ui.Money(l.Amount)</strong></div>
+                    }
+                    <div class="summary-total"><span>@T("الإجمالي", "Total")</span><strong>@Ui.Money(D.Total) @Ui.Cur</strong></div>
+                    <a class="text-action" href="/collections"><Icon Name="plus" />@T("إضافة مشاريع أخرى", "Add more projects")</a>
+                </aside>
+            </div>
+        }
+    </div>
+}
+
+<Modal @bind-Open="_newDonorOpen" Title="@T("متبرع جديد", "New donor")" Wide="true">
+    <ChildContent>
+        @if (_dupes.Count > 0)
+        {
+            <div class="notice-box warn"><Icon Name="triangle-alert" />
+                <div>
+                    <strong>@T("سجلات مشابهة موجودة — اختر أحدها بدل إنشاء سجل مكرر:", "Similar records exist — pick one instead of creating a duplicate:")</strong>
+                    @foreach (var h in _dupes)
+                    {
+                        <button class="donor-result" @onclick="() => { SelectDonor(h.Donor); _newDonorOpen = false; }">
+                            <div class="avatar">@Initial(h.Donor.NameAr)</div>
+                            <div><strong>@h.Donor.DisplayName(Ui.IsAr)</strong><span dir="ltr">@h.Donor.Number</span></div>
+                            <StatusPill Css="@(h.Strong ? "warning" : "neutral")">@T(h.ReasonAr, h.ReasonEn)</StatusPill>
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+        <DonorForm Model="_newDonor" Compact="true" />
+    </ChildContent>
+    <Footer>
+        <button class="secondary-btn" @onclick="() => _newDonorOpen = false">@T("إلغاء", "Cancel")</button>
+        <button class="primary-btn" disabled="@Busy" @onclick="SaveNewDonor">@(_dupes.Count > 0 ? T("إنشاء رغم التشابه", "Create anyway") : T("حفظ واختيار", "Save & select"))</button>
+    </Footer>
+</Modal>
+
+@code {
+    private int _step = 1;
+    private string _donorSearch = "";
+    private List<Donor> _donors = [];
+    private List<Agreement> _agreements = [];
+    private DonationResult? _result;
+    private decimal _total; private int _lines;
+    private bool _newDonorOpen;
+    private Donor _newDonor = new();
+    private List<DuplicateHint> _dupes = [];
+    private bool _dupesChecked;
+    private CancellationTokenSource? _debounce;
+    private DonationDraft D => Cart.Draft;
+
+    private static readonly (PaymentMethod, string, string, string)[] Methods =
+    [
+        (PaymentMethod.Cash, "banknote", "نقدي", "Cash"),
+        (PaymentMethod.Pos, "credit-card", "نقاط بيع", "POS"),
+        (PaymentMethod.BankTransfer, "building-2", "تحويل بنكي", "Bank transfer"),
+        (PaymentMethod.Online, "globe", "قناة إلكترونية", "Online channel"),
+    ];
+
+    private string MethodName(PaymentMethod m) { var x = Methods.First(t => t.Item1 == m); return T(x.Item3, x.Item4); }
+    private static string Initial(string? s) => string.IsNullOrWhiteSpace(s) ? "؟" : string.Concat(s.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(p => p[0]));
+    private static string Mask(string phone) => phone.Length <= 4 ? phone : new string('•', phone.Length - 2) + phone[^2..];
+
+    protected override void OnInitialized() { base.OnInitialized(); Cart.Changed += Changed; }
+    private void Changed() => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) { await Cart.LoadAsync(); await LoadDonorAgreements(); StateHasChanged(); }
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (Can(Perm.DonorsView)) _donors = await S<DonorService>().SearchAsync(null, take: 6);
+    }
+
+    private async Task SearchDonors(ChangeEventArgs e)
+    {
+        _donorSearch = e.Value?.ToString() ?? "";
+        _debounce?.Cancel(); _debounce = new(); var t = _debounce.Token;
+        try { await Task.Delay(250, t); } catch (TaskCanceledException) { return; }
+        _donors = await S<DonorService>().SearchAsync(_donorSearch, take: 8);
+    }
+
+    private async Task SelectDonor(Donor d)
+    {
+        D.DonorId = d.Id; D.DonorDisplay = $"{d.DisplayName(Ui.IsAr)} · {d.Number}"; D.AgreementId = null;
+        await Cart.SaveAsync();
+        await LoadDonorAgreements();
+    }
+
+    private async Task LoadDonorAgreements()
+    {
+        _agreements = [];
+        if (D.DonorId is null || !Can(Perm.AgreementsManage)) return;
+        try
+        {
+            var all = await S<AgreementService>().ListAsync(AgreementStatus.Active);
+            _agreements = all.Where(a => a.DonorId == D.DonorId && a.Remaining > 0).ToList();
+        }
+        catch (DomainException) { }
+    }
+
+    private Task SaveDraft() => Cart.SaveAsync();
+
+    private async Task SetMethod(PaymentMethod m)
+    {
+        D.Method = m; D.ChannelResult = null;
+        await Cart.SaveAsync();
+    }
+
+    private bool CanContinue => _step switch
+    {
+        1 => D.DonorId is not null,
+        2 => D.Method switch
+        {
+            PaymentMethod.BankTransfer => !string.IsNullOrWhiteSpace(D.PaymentReference) && !string.IsNullOrWhiteSpace(D.BankName) && D.TransferDate is not null,
+            PaymentMethod.Pos => !string.IsNullOrWhiteSpace(D.PosTerminal) && !string.IsNullOrWhiteSpace(D.PaymentReference) && !string.IsNullOrEmpty(D.ChannelResult),
+            PaymentMethod.Online => !string.IsNullOrWhiteSpace(D.PaymentReference) && !string.IsNullOrEmpty(D.ChannelResult),
+            _ => true,
+        },
+        _ => D.Lines.Count > 0,
+    };
+
+    private async Task Next()
+    {
+        if (_step < 3) { _step++; return; }
+        DonationResult? r = null;
+        var total = D.Total; var lines = D.Lines.Count;
+        var ok = await Run(async () => r = await S<DonationService>().ConfirmAsync(D), reload: false);
+        if (!ok || r is null) return;
+        _result = r; _total = total; _lines = lines;
+        if (r.Status == DonationStatus.Failed)
+        {
+            D.IdempotencyKey = Guid.NewGuid().ToString("N");   // a declined attempt must not block a new attempt
+            await Cart.SaveAsync();
+        }
+        else await Cart.ClearAsync();
+        if (r.WasDuplicate) Toast.Show(T("هذه العملية مسجلة مسبقًا — لم يُنشأ سند مكرر.", "This transaction was already recorded — no duplicate receipt was created."), "info");
+    }
+
+    private void RetryAfterFailure() { _result = null; _step = 2; }
+
+    private void OpenNewDonor() { _newDonor = new Donor(); _dupes = []; _dupesChecked = false; _newDonorOpen = true; }
+
+    private async Task SaveNewDonor()
+    {
+        if (!_dupesChecked)
+        {
+            _dupes = await S<DonorService>().FindDuplicatesAsync(_newDonor);
+            _dupesChecked = true;
+            if (_dupes.Count > 0) return;
+        }
+        var id = 0;
+        if (await Run(async () => id = await S<DonorService>().SaveAsync(_newDonor), "تم تسجيل المتبرع", "Donor registered", reload: false))
+        {
+            var d = await S<DonorService>().GetAsync(id);
+            await SelectDonor(d);
+            _newDonorOpen = false;
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Cart.Changed -= Changed;
+        base.Dispose(disposing);
+    }
+}

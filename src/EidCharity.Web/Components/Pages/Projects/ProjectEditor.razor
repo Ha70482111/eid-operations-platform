@@ -1,0 +1,129 @@
+@page "/projects/new"
+@page "/projects/{Id:int}/edit"
+@attribute [Authorize(Policy = Perm.ProjectsCreateLicensed + "," + Perm.ProjectsEdit)]
+@inherits EidPage
+
+<PageTitle>@T("بيانات المشروع", "Project details")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="P05" Title="@(Id is null ? T("مشروع جديد", "New project") : T("تعديل المشروع", "Edit project"))"
+                Subtitle="@T("لا يُحفظ مشروع تشغيلي دون برنامج. المشروع المنفرد يُنشأ له برنامج بنفس الاسم تلقائيًا.", "No operational project without a program. A standalone project gets a same-name program automatically.")" />
+    <PageState Loading="Loading" Error="@Error">
+        @if (_approved)
+        {
+            <div class="notice-box warn"><Icon Name="triangle-alert" />@T("المشروع معتمد ماليًا: تعديل السقف أو النطاق أو العملة أو التراخيص تغيير جوهري يُعاد للمالية، ويبقى الربط الحالي ساريًا حتى الاعتماد. باقي الحقول تُطبق فورًا.", "Finance-approved: changing cap, scope, currency or licenses is substantive and goes back to finance; the current mapping stays active meanwhile. Other fields apply immediately.")</div>
+        }
+        <section class="data-card">
+            <div class="form-section">
+                <h3><Icon Name="folder-kanban" />@T("البرنامج والتصنيف", "Program & type")</h3>
+                <div class="form-grid">
+                    <div class="field"><label>@T("نوع المشروع", "Project type")</label>
+                        <select @bind="_in.Kind" disabled="@(Id is not null)"><option value="@ProjectKind.Child">@T("ضمن برنامج", "Within a program")</option><option value="@ProjectKind.Standalone">@T("مشروع منفرد", "Standalone project")</option></select></div>
+                    @if (_in.Kind == ProjectKind.Child)
+                    {
+                        <div class="field"><label class="req">@T("البرنامج", "Program")</label>
+                            <select @bind="_in.ProgramId" disabled="@(Id is not null)"><option value="">—</option>@foreach (var p in _programs.Where(p => !p.IsStandalone && !p.IsClosed)) { <option value="@p.Id">@p.Code — @Ui.N(p.NameAr, p.NameEn)</option> }</select></div>
+                    }
+                    <div class="field"><label class="req">@T("المركز المسؤول", "Responsible center")</label>
+                        <select @bind="_in.CenterId">@foreach (var c in _centers) { <option value="@c.Id">@Ui.Name(c)</option> }</select></div>
+                    <div class="field"><label>@T("الطابع البصري لبطاقة التحصيل", "Collection card visual")</label>
+                        <select @bind="_in.Visual"><option value="water">@T("مياه", "Water")</option><option value="school">@T("تعليم", "Education")</option><option value="health">@T("صحة", "Health")</option><option value="home">@T("سكن", "Housing")</option><option value="food">@T("إطعام", "Food")</option></select></div>
+                </div>
+            </div>
+            <div class="form-section">
+                <h3><Icon Name="file-text" />@T("البيانات الأساسية", "Basic data")</h3>
+                <div class="form-grid">
+                    <div class="field"><label class="req">@T("الاسم بالعربية", "Name (Arabic)")</label><input @bind="_in.NameAr" /></div>
+                    <div class="field"><label class="req">@T("الاسم بالإنجليزية", "Name (English)")</label><input @bind="_in.NameEn" dir="ltr" /></div>
+                    <div class="field"><label>@T("الملخص بالعربية", "Summary (Arabic)")</label><textarea @bind="_in.SummaryAr"></textarea></div>
+                    <div class="field"><label>@T("الملخص بالإنجليزية", "Summary (English)")</label><textarea @bind="_in.SummaryEn" dir="ltr"></textarea></div>
+                    <div class="field"><label>@T("الأهداف", "Objectives")</label><textarea @bind="_in.Objectives"></textarea></div>
+                    <div class="field"><label>@T("الأنشطة", "Activities")</label><textarea @bind="_in.Activities"></textarea></div>
+                    <div class="field"><label>@T("نطاق التنفيذ", "Execution scope")</label><input @bind="_in.ExecutionScope" /></div>
+                    <div class="field"><label>@T("الموقع", "Location")</label><input @bind="_in.Location" /></div>
+                    <div class="field"><label class="req">@T("بداية التنفيذ", "Execution start")</label><input type="date" @bind="_in.ExecutionStart" /></div>
+                    <div class="field"><label class="req">@T("نهاية التنفيذ", "Execution end")</label><input type="date" @bind="_in.ExecutionEnd" /></div>
+                    <div class="field"><label>@T("فئة المستفيدين", "Beneficiary category")</label><input @bind="_in.BeneficiaryCategory" /></div>
+                    <div class="row" style="flex-wrap:nowrap;align-items:end">
+                        <div class="field grow"><label>@T("المستهدف", "Target")</label><input type="number" @bind="_in.TargetBeneficiaries" dir="ltr" /></div>
+                        <div class="field" style="width:120px"><label>@T("الوحدة", "Unit")</label><input @bind="_in.BeneficiaryUnit" /></div>
+                    </div>
+                </div>
+            </div>
+            <div class="form-section">
+                <h3><Icon Name="banknote" />@T("القيم المالية", "Financials")</h3>
+                <div class="form-grid three">
+                    <div class="field"><label class="req">@T("تكلفة التنفيذ", "Execution cost")</label><input type="number" step="0.01" @bind="_in.ExecutionCost" dir="ltr" /></div>
+                    <div class="field"><label class="req">@T("سقف التحصيل", "Collection cap")</label><input type="number" step="0.01" @bind="_in.CollectionCap" dir="ltr" /><span class="hint">@T("قد يختلف عن تكلفة التنفيذ", "May differ from execution cost")</span></div>
+                    <div class="field"><label>@T("العملة", "Currency")</label><input @bind="_in.Currency" dir="ltr" /></div>
+                    <div class="field"><label>@T("مبالغ التحصيل السريعة", "Quick amounts")</label><input @bind="_in.QuickAmounts" dir="ltr" /><span class="hint">50,100,500,1000</span></div>
+                    <div class="field span-2"><label>@T("مرجع الدراسة المعتمدة", "Approved study reference")</label><input @bind="_in.StudyReference" /></div>
+                </div>
+            </div>
+            <div class="form-section">
+                <h3><Icon Name="badge-check" />@T("التراخيص المقترحة", "Proposed licenses")</h3>
+                <p class="muted" style="font-size:12px;margin-bottom:10px">@T("يقترح المركز التراخيص؛ والمالية تحدد الربط النهائي والفترات والسقوف.", "The center proposes licenses; finance sets the final mapping, periods and caps.")</p>
+                <div class="grid-2">
+                    @foreach (var l in _licenses.Where(l => l.Status is LicenseStatus.Active or LicenseStatus.NotStarted))
+                    {
+                        var on = _in.LicenseIds.Contains(l.License.Id);
+                        <label class="donor-result" style="margin:0;cursor:pointer;@(on ? "border-color:var(--green);background:var(--green-soft)" : "")">
+                            <input type="checkbox" checked="@on" @onchange="e => ToggleLicense(l.License.Id, (bool)e.Value!)" style="accent-color:var(--green)" />
+                            <div><strong dir="ltr">@l.License.Number</strong><span>@l.License.Purposes · @Ui.Date(l.License.ValidFrom) → @Ui.Date(l.License.ValidTo)</span></div>
+                            <StatusPill Tone="StatusText.Of(l.Status)" />
+                        </label>
+                    }
+                </div>
+            </div>
+            <div class="form-section">
+                <div class="form-actions" style="margin-top:0">
+                    <a class="secondary-btn" href="@(Id is null ? "/projects/list" : $"/projects/{Id}")">@T("إلغاء", "Cancel")</a>
+                    <button class="primary-btn" disabled="@Busy" @onclick="Save"><Icon Name="save" />@T("حفظ", "Save")</button>
+                </div>
+            </div>
+        </section>
+    </PageState>
+</div>
+@code {
+    [Parameter] public int? Id { get; set; }
+    [SupplyParameterFromQuery(Name = "program")] public int? ProgramQuery { get; set; }
+    private ProjectInput _in = new();
+    private List<ProgramRow> _programs = [];
+    private List<Center> _centers = [];
+    private List<LicenseRow> _licenses = [];
+    private bool _approved, _loaded;
+
+    protected override async Task LoadAsync()
+    {
+        if (_loaded) return;
+        _programs = await S<ProjectService>().ListProgramsAsync();
+        _centers = await S<AdminService>().CentersAsync();
+        if (Can(Perm.LicensesView)) _licenses = await S<LicenseService>().ListAsync();
+        if (Id is int id)
+        {
+            var p = await S<ProjectService>().GetProjectAsync(id);
+            _in = ProjectService.ToInput(p);
+            _approved = p.ApprovalStatus == ApprovalStatus.FinanciallyApproved;
+        }
+        else
+        {
+            _in.CenterId = Me.CenterId ?? _centers.FirstOrDefault()?.Id ?? 0;
+            _in.ProgramId = ProgramQuery;
+            _in.ExecutionStart = DateOnly.FromDateTime(QatarTime.Now);
+            _in.ExecutionEnd = _in.ExecutionStart.Value.AddYears(1);
+        }
+        _loaded = true;
+    }
+
+    private void ToggleLicense(int id, bool on) { if (on) { if (!_in.LicenseIds.Contains(id)) _in.LicenseIds.Add(id); } else _in.LicenseIds.Remove(id); }
+
+    private async Task Save()
+    {
+        var id = Id ?? 0;
+        if (Id is null)
+        {
+            if (_in.Kind == ProjectKind.Standalone) _in.ProgramId = null;
+            if (await Run(async () => id = await S<ProjectService>().CreateProjectAsync(_in), "تم إنشاء المشروع كمسودة", "Project created as draft", reload: false)) Nav.NavigateTo($"/projects/{id}");
+        }
+        else if (await Run(() => S<ProjectService>().UpdateProjectAsync(_in), "تم حفظ التعديلات", "Changes saved", reload: false)) Nav.NavigateTo($"/projects/{id}");
+    }
+}

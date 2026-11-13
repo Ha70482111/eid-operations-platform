@@ -1,0 +1,42 @@
+@page "/projects/financial-items"
+@attribute [Authorize(Policy = Perm.FinanceItemsManage)]
+@inherits EidPage
+
+<PageTitle>@T("البنود المالية", "Financial items")</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="P10" Title="@T("البنود المالية", "Financial items")" Subtitle="@T("بنود الإيراد التي يُربط بها كل مشروع قبل إتاحته للتحصيل، مع ربطها بدليل الحسابات.", "Revenue items each project is mapped to before collection, linked to the chart of accounts.")">
+        <Actions><button class="primary-btn" @onclick="() => { _i = new FinancialItem(); _open = true; }"><Icon Name="plus" />@T("بند جديد", "New item")</button></Actions>
+    </PageHeader>
+    <PageState Loading="Loading" Error="@Error" Empty="@(_items.Count == 0)">
+        <section class="data-card"><div class="table-wrap"><table>
+            <thead><tr><th>@T("الرقم", "Number")</th><th>@T("الاسم", "Name")</th><th>@T("حساب الأستاذ", "GL mapping")</th><th>@T("الحالة", "Status")</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var i in _items)
+                {
+                    <tr><td><strong dir="ltr">@i.Number</strong></td><td>@Ui.Name(i)</td><td dir="ltr">@i.GlMapping</td>
+                        <td><StatusPill Css="@(i.IsActive ? "success" : "neutral")">@(i.IsActive ? T("نشط", "Active") : T("موقوف", "Inactive"))</StatusPill></td>
+                        <td class="actions"><button class="icon-btn sm" @onclick="() => { _i = new FinancialItem { Id = i.Id, Number = i.Number, NameAr = i.NameAr, NameEn = i.NameEn, GlMapping = i.GlMapping, IsActive = i.IsActive }; _open = true; }"><Icon Name="pencil-line" /></button></td></tr>
+                }
+            </tbody>
+        </table></div></section>
+    </PageState>
+</div>
+<Modal @bind-Open="_open" Title="@T("بند مالي", "Financial item")">
+    <ChildContent>
+        <div class="form-grid">
+            <div class="field"><label class="req">@T("الرقم", "Number")</label><input @bind="_i.Number" dir="ltr" /></div>
+            <div class="field"><label>@T("حساب الأستاذ", "GL mapping")</label><input @bind="_i.GlMapping" dir="ltr" /></div>
+            <div class="field"><label class="req">@T("الاسم بالعربية", "Name (Arabic)")</label><input @bind="_i.NameAr" /></div>
+            <div class="field"><label>@T("الاسم بالإنجليزية", "Name (English)")</label><input @bind="_i.NameEn" dir="ltr" /></div>
+            <label class="check"><input type="checkbox" @bind="_i.IsActive" />@T("نشط", "Active")</label>
+        </div>
+    </ChildContent>
+    <Footer><button class="primary-btn" disabled="@Busy" @onclick="Save">@T("حفظ", "Save")</button></Footer>
+</Modal>
+@code {
+    private List<FinancialItem> _items = [];
+    private FinancialItem _i = new();
+    private bool _open;
+    protected override async Task LoadAsync() => _items = await S<FinancialItemService>().ListAsync();
+    private async Task Save() { if (await Run(() => S<FinancialItemService>().SaveAsync(_i), "تم الحفظ", "Saved")) _open = false; }
+}

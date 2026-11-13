@@ -1,0 +1,78 @@
+@page "/collections/receipts/{Id:int}"
+@inherits EidPage
+@inject IJSRuntime JS
+
+<PageTitle>@T("سند قبض", "Receipt") @_r?.Number</PageTitle>
+<div class="page">
+    <PageHeader Eyebrow="C15" Title="@T("سند قبض", "Donation receipt")" Subtitle="@T("سند واحد للعملية مهما تعددت المشاريع. إعادة الطباعة نسخة من نفس السند وتُسجل في السجل.", "One receipt per transaction regardless of project count. Reprints are copies of the same receipt and are logged.")">
+        <Actions>
+            @if (_r is not null)
+            {
+                <a class="secondary-btn" href="/collections/transactions/@_r.DonationId"><Icon Name="receipt-text" />@T("تفاصيل العملية", "Transaction")</a>
+                <button class="primary-btn" disabled="@(Busy || _r.IsCancelled)" @onclick="Print"><Icon Name="printer" />@(_r.PrintCount > 0 ? T("طباعة نسخة", "Print copy") : T("طباعة السند", "Print receipt"))</button>
+            }
+        </Actions>
+    </PageHeader>
+    <PageState Loading="Loading" Error="@Error">
+        @if (_r is not null)
+        {
+            var d = _r.Donation!;
+            <article class="receipt" dir="@Ui.Dir">
+                <div class="receipt-head">
+                    <img src="eid-charity-logo.png" alt="Eid Charity" />
+                    <div>
+                        <h2>@T("سند قبض تبرع", "Donation receipt")</h2>
+                        <span dir="ltr">@_r.Number</span>
+                        <span>@Ui.DateTimeStr(_r.IssuedAt) @T("(توقيت قطر)", "(Qatar time)")</span>
+                        @if (_r.PrintCount > 0) { <span class="copy-tag">@T("نسخة", "COPY")</span> }
+                        @if (_r.IsCancelled) { <span class="copy-tag">@T("ملغى", "CANCELLED")</span> }
+                    </div>
+                </div>
+                <div class="kv">
+                    <div><span>@T("استلمنا من", "Received from")</span><strong>@(d.Donor?.DisplayName(Ui.IsAr) ?? T("متبرع مجهول", "Unknown donor"))</strong></div>
+                    <div><span>@T("رقم المتبرع", "Donor no.")</span><strong dir="ltr">@d.Donor?.Number</strong></div>
+                    <div><span>@T("المبلغ", "Amount")</span><strong><Money Value="_r.Amount" Currency="@_r.Currency" /></strong></div>
+                    <div><span>@T("طريقة الدفع", "Payment method")</span><strong>@Ui.T(StatusText.Of(d.PaymentMethod).Ar, StatusText.Of(d.PaymentMethod).En) @(d.PaymentReference is null ? "" : $"· {d.PaymentReference}")</strong></div>
+                    <div><span>@T("رقم العملية", "Transaction no.")</span><strong dir="ltr">@d.Number</strong></div>
+                    <div><span>@T("المحصّل", "Collector")</span><strong>@d.CollectorName</strong></div>
+                    @if (!string.IsNullOrEmpty(_r.AgreementNumber)) { <div><span>@T("الاتفاقية", "Agreement")</span><strong dir="ltr">@_r.AgreementNumber</strong></div> }
+                </div>
+                <table>
+                    <thead><tr><th>@T("المشروع", "Project")</th><th>@T("البند المالي", "Financial item")</th><th>@T("الترخيص", "License")</th><th class="num">@T("المبلغ", "Amount")</th></tr></thead>
+                    <tbody>
+                        @foreach (var l in d.Lines)
+                        {
+                            <tr><td><strong>@Ui.N(l.ProjectNameAr, l.ProjectNameEn)</strong><span dir="ltr">@l.ProjectCode</span></td><td dir="ltr">@l.FinancialItemNumber</td><td dir="ltr">@l.LicenseNumber</td><td class="num"><Money Value="l.Amount" ShowCurrency="false" /></td></tr>
+                        }
+                    </tbody>
+                    <tfoot><tr><td colspan="3">@T("الإجمالي", "Total")</td><td class="num"><Money Value="_r.Amount" Currency="@_r.Currency" /></td></tr></tfoot>
+                </table>
+                <p class="total-words">@T("تُستخدم التبرعات في الأغراض المرخصة المذكورة أعلاه وفق أنظمة هيئة تنظيم الأعمال الخيرية في دولة قطر.", "Donations are used for the licensed purposes above, in line with the Regulatory Authority for Charitable Activities in Qatar.")</p>
+                <div class="sign"><div>@T("توقيع المحصّل", "Collector signature")</div><div>@T("ختم المؤسسة", "Foundation stamp")</div></div>
+            </article>
+        }
+    </PageState>
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [SupplyParameterFromQuery(Name = "print")] public int? AutoPrint { get; set; }
+    private Receipt? _r;
+    private bool _autoDone;
+
+    protected override async Task LoadAsync() => _r = await S<DonationService>().GetReceiptAsync(Id);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (AutoPrint == 1 && !_autoDone && _r is not null && _r.PrintCount == 0) { _autoDone = true; await Print(); }
+    }
+
+    private async Task Print()
+    {
+        if (await Run(() => S<DonationService>().RecordPrintAsync(Id), reload: false))
+        {
+            await JS.InvokeVoidAsync("eid.print");
+            await Reload();
+        }
+    }
+}

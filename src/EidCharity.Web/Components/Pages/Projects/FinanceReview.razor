@@ -1,0 +1,161 @@
+@page "/projects/finance/{Id:int}"
+@page "/projects/finance/review/{Id:int}"
+@attribute [Authorize(Policy = Perm.FinanceReview)]
+@inherits EidPage
+
+<PageTitle>@T("المراجعة المالية", "Finance review")</PageTitle>
+<div class="page">
+    <PageState Loading="Loading" Error="@Error">
+        @if (_p is not null)
+        {
+            <PageHeader Eyebrow="P09 → P11 → P12" Title="@Ui.Name(_p)" Subtitle="@($"{_p.Code} · {Ui.Name(_p.Center!)} · {Ui.Name(_p.Program!)}")">
+                <Actions>
+                    <StatusPill Tone="StatusText.Of(_p.ApprovalStatus)" />
+                    <a class="secondary-btn" href="/projects/@_p.Id"><Icon Name="eye" />@T("ملف المشروع", "Project file")</a>
+                </Actions>
+            </PageHeader>
+            @if (_p.PendingChangesJson is not null)
+            {
+                <div class="notice-box warn"><Icon Name="triangle-alert" />@T("تغيير جوهري مطلوب بعد الاعتماد — الربط الحالي ساري حتى تعتمد التغيير.", "Substantive change requested after approval — the current mapping stays active until you approve.")</div>
+            }
+            <section class="workflow-card">
+                <div class="review-grid">
+                    <div class="checklist">
+                        <h3>@T("تحقق الاكتمال", "Completeness check")</h3>
+                        @foreach (var (ok, ar, en) in Completeness())
+                        {
+                            <label><input type="checkbox" checked="@ok" disabled /><i><Icon Name="check" /></i><span>@T(ar, en)</span></label>
+                        }
+                        <div class="kv mt">
+                            <div><span>@T("تكلفة التنفيذ", "Execution cost")</span><strong><Money Value="_p.ExecutionCost" Currency="@_p.Currency" /></strong></div>
+                            <div><span>@T("سقف التحصيل", "Collection cap")</span><strong><Money Value="_p.CollectionCap" /></strong></div>
+                            <div><span>@T("المدة", "Duration")</span><strong dir="ltr">@Ui.Date(_p.ExecutionStart) → @Ui.Date(_p.ExecutionEnd)</strong></div>
+                            <div><span>@T("مرجع الدراسة", "Study ref.")</span><strong>@(string.IsNullOrEmpty(_p.StudyReference) ? "—" : _p.StudyReference)</strong></div>
+                        </div>
+                        @{ var lastNote = _p.ReviewHistory.FirstOrDefault(h => h.Action is ReviewAction.ReturnedToCenter or ReviewAction.Resubmitted); }
+                        @if (lastNote is not null)
+                        {
+                            <div class="review-note"><Icon Name="circle-alert" /><div><strong>@T("آخر إجراء", "Last action")</strong><span>@lastNote.ByUserName · @Ui.DateTimeStr(lastNote.CreatedAt) — @lastNote.Note</span></div></div>
+                        }
+                    </div>
+                    <div class="mapping">
+                        <h3>@T("البند المالي والتراخيص", "Financial item & licenses")</h3>
+                        <div class="field mb">
+                            <label class="req">@T("البند المالي", "Financial item")</label>
+                            <select @bind="_itemId" disabled="@(!CanMap)"><option value="0">—</option>@foreach (var i in _items.Where(i => i.IsActive)) { <option value="@i.Id">@i.Number — @Ui.Name(i)</option> }</select>
+                        </div>
+                        @foreach (var l in _lines)
+                        {
+                            var lic = _licenses.FirstOrDefault(x => x.License.Id == l.LicenseId);
+                            <div class="mapping-row" style="grid-template-columns:24px 1.2fr 1fr 1fr 110px 34px;align-items:end">
+                                <Icon Name="file-check-2" />
+                                <div class="field"><label>@T("الترخيص", "License")</label>
+                                    <select @bind="l.LicenseId" @bind:after="() => LicenseChanged(l)" disabled="@(!CanMap)">
+                                        @foreach (var x in _licenses.Where(x => x.Status is LicenseStatus.Active or LicenseStatus.NotStarted)) { <option value="@x.License.Id">@x.License.Number (@T("متبقٍ", "rem.") @Ui.Money(x.Usage.Remaining))</option> }
+                                    </select></div>
+                                <div class="field"><label>@T("من", "From")</label><input type="date" @bind="l.PeriodFrom" disabled="@(!CanMap)" /></div>
+                                <div class="field"><label>@T("إلى", "To")</label><input type="date" @bind="l.PeriodTo" disabled="@(!CanMap)" /></div>
+                                <div class="field"><label>@T("سقف فرعي", "Sub-cap")</label><input type="number" step="0.01" @bind="l.LinkCap" dir="ltr" disabled="@(!CanMap)" /></div>
+                                @if (CanMap) { <button class="icon-btn sm" @onclick="() => _lines.Remove(l)"><Icon Name="trash-2" /></button> }
+                                @if (lic is not null) { <span class="muted" style="grid-column:2/-1;font-size:10.5px">@(lic.License.Scope == LicenseScope.ProgramAndProjects ? T("ترخيص مشترك على مستوى البرنامج — السقف يُراقب مرة واحدة", "Shared program-level license — cap watched once") : T("نطاق: المشروع فقط", "Scope: this project only")) · @T("فترة التحصيل", "Collection") @Ui.Date(lic.License.CollectionFrom) → @Ui.Date(lic.License.CollectionTo) · @T("السقف", "Cap") @Ui.Money(lic.License.Cap) · @lic.Usage.UsedPercent%</span> }
+                            </div>
+                        }
+                        @if (CanMap) { <button class="text-action" @onclick="AddLine"><Icon Name="plus" />@T("ربط ترخيص", "Link a license")</button> }
+                        <div class="cap-check"><Icon Name="info" /><span>@T("سقف فرعي = 0 يعني بلا سقف فرعي (يُطبق سقف الترخيص). تُخصص التبرعات على الترخيص الأقرب انتهاءً أولًا.", "Sub-cap 0 = none (license cap applies). Donations are allocated to the earliest-expiring license first.")</span></div>
+                    </div>
+                </div>
+                <div class="workflow-actions">
+                    @if (_p.ApprovalStatus == ApprovalStatus.AwaitingFinance) { <button class="secondary-btn" disabled="@Busy" @onclick="Start">@T("بدء المراجعة", "Start review")</button> }
+                    @if (Reviewable)
+                    {
+                        <button class="danger-text" @onclick="() => OpenNote(NoteAction.Reject)"><Icon Name="circle-x" />@T("رفض", "Reject")</button>
+                        <button class="secondary-btn" @onclick="() => OpenNote(NoteAction.Return)">@T("إعادة بملاحظة", "Return with note")</button>
+                        @if (CanMap) { <button class="secondary-btn" disabled="@Busy" @onclick="SaveMapping"><Icon Name="save" />@T("حفظ الربط", "Save mapping")</button> }
+                        @if (Can(Perm.FinanceApproveEligibility)) { <button class="primary-btn" disabled="@Busy" @onclick="Approve"><Icon Name="badge-check" />@T("اعتماد الإتاحة وإرسال الربط", "Approve eligibility & send mapping")</button> }
+                    }
+                    @if (_p.ApprovalStatus == ApprovalStatus.FinanciallyApproved)
+                    {
+                        @if (Can(Perm.FinanceSuspendEligibility) && _p.CollectionStatus != CollectionStatus.Suspended) { <button class="danger-text" @onclick="() => OpenNote(NoteAction.Suspend)"><Icon Name="circle-pause" />@T("إيقاف الإتاحة", "Suspend eligibility")</button> }
+                        @if (Can(Perm.FinanceSuspendEligibility) && _p.CollectionStatus == CollectionStatus.Suspended) { <button class="secondary-btn" disabled="@Busy" @onclick="Resume"><Icon Name="circle-play" />@T("استئناف الإتاحة", "Resume eligibility")</button> }
+                        @if (Can(Perm.FinanceApproveEligibility) && _p.MappingSyncStatus != SyncStatus.Succeeded) { <button class="secondary-btn" disabled="@Busy" @onclick="Resend"><Icon Name="refresh-cw" />@T("إعادة إرسال الربط", "Resend mapping")</button> }
+                    }
+                </div>
+            </section>
+        }
+    </PageState>
+</div>
+<Modal @bind-Open="_noteOpen" Title="@(_action switch { NoteAction.Return => T("إعادة للمركز", "Return to center"), NoteAction.Reject => T("رفض المشروع", "Reject project"), _ => T("إيقاف الإتاحة", "Suspend eligibility") })">
+    <ChildContent><div class="field"><label class="req">@T("الملاحظة / السبب", "Note / reason")</label><textarea @bind="_note"></textarea></div></ChildContent>
+    <Footer><button class="@(_action == NoteAction.Return ? "primary-btn" : "danger-btn")" disabled="@Busy" @onclick="ConfirmNote">@T("تأكيد", "Confirm")</button></Footer>
+</Modal>
+@code {
+    [Parameter] public int Id { get; set; }
+    private enum NoteAction { Return, Reject, Suspend }
+    private Project? _p;
+    private List<FinancialItem> _items = [];
+    private List<LicenseRow> _licenses = [];
+    private List<MappingLineInput> _lines = [];
+    private int _itemId;
+    private bool _noteOpen, _hasLicenseDoc;
+    private NoteAction _action;
+    private string _note = "";
+    private bool Reviewable => _p!.ApprovalStatus is ApprovalStatus.AwaitingFinance or ApprovalStatus.UnderFinanceReview;
+    private bool CanMap => Reviewable && Can(Perm.FinanceMap);
+
+    protected override async Task LoadAsync()
+    {
+        _p = await S<ProjectService>().GetProjectAsync(Id);
+        _items = await S<FinancialItemService>().ListAsync();
+        _licenses = await S<LicenseService>().ListAsync();
+        var current = _p.Mappings.Where(m => m.Status is MappingStatus.Draft or MappingStatus.Active).ToList();
+        var drafts = current.Where(m => m.Status == MappingStatus.Draft).ToList();
+        var source = drafts.Count > 0 ? drafts : current;
+        _lines = source.Select(m => new MappingLineInput { LicenseId = m.LicenseId, PeriodFrom = m.PeriodFrom, PeriodTo = m.PeriodTo, LinkCap = m.LinkCap, ScopeNote = m.ScopeNote }).ToList();
+        _itemId = source.FirstOrDefault(m => m.FinancialItemId != null)?.FinancialItemId ?? 0;
+        _hasLicenseDoc = (await S<AttachmentService>().ListAsync(nameof(Project), Id)).Any(a => a.Category == AttachmentCategory.License);
+    }
+
+    private IEnumerable<(bool, string, string)> Completeness()
+    {
+        yield return (!string.IsNullOrWhiteSpace(_p!.NameAr) && _p.ExecutionStart is not null && _p.ExecutionEnd is not null, "بيانات المشروع والمدة", "Project data & duration");
+        yield return (_p.ExecutionCost > 0 && _p.CollectionCap > 0, "التكلفة وسقف التحصيل", "Cost & collection cap");
+        yield return (_p.BudgetLines.Count > 0, "الميزانية وبنود التنفيذ", "Budget & execution lines");
+        yield return (_hasLicenseDoc || _p.Mappings.Count > 0, "مستند الترخيص الأساسي", "Primary license document");
+        yield return (!string.IsNullOrWhiteSpace(_p.StudyReference), "دراسة المشروع والمرفقات", "Project study & attachments");
+    }
+
+    private void AddLine()
+    {
+        var l = _licenses.FirstOrDefault(x => x.Status == LicenseStatus.Active && _lines.All(y => y.LicenseId != x.License.Id));
+        if (l is null) return;
+        _lines.Add(new MappingLineInput { LicenseId = l.License.Id, PeriodFrom = l.License.CollectionFrom, PeriodTo = l.License.CollectionTo });
+    }
+
+    private void LicenseChanged(MappingLineInput line)
+    {
+        var l = _licenses.FirstOrDefault(x => x.License.Id == line.LicenseId);
+        if (l is not null) { line.PeriodFrom = l.License.CollectionFrom; line.PeriodTo = l.License.CollectionTo; }
+    }
+
+    private Task Start() => Run(() => S<FinanceReviewService>().StartReviewAsync(Id), "بدأت المراجعة", "Review started");
+    private Task SaveMapping() => Run(() => S<FinanceReviewService>().SaveMappingAsync(Id, _itemId, _lines), "تم حفظ الربط", "Mapping saved");
+    private async Task Approve()
+    {
+        if (CanMap && !await Run(() => S<FinanceReviewService>().SaveMappingAsync(Id, _itemId, _lines), reload: false)) return;
+        await Run(() => S<FinanceReviewService>().ApproveEligibilityAsync(Id, null), "اعتُمدت الإتاحة وأُرسل الربط لنظام التحصيل", "Eligibility approved; mapping sent to Collections");
+    }
+    private Task Resume() => Run(() => S<FinanceReviewService>().ResumeEligibilityAsync(Id), "استُؤنفت الإتاحة", "Eligibility resumed");
+    private Task Resend() => Run(() => S<FinanceReviewService>().ResendMappingAsync(Id), "أُعيد إرسال الربط", "Mapping resent");
+    private void OpenNote(NoteAction a) { _action = a; _note = ""; _noteOpen = true; }
+    private async Task ConfirmNote()
+    {
+        var svc = S<FinanceReviewService>();
+        var ok = _action switch
+        {
+            NoteAction.Return => await Run(() => svc.ReturnToCenterAsync(Id, _note), "أُعيد المشروع للمركز", "Returned to center"),
+            NoteAction.Reject => await Run(() => svc.RejectAsync(Id, _note), "رُفض المشروع", "Project rejected"),
+            _ => await Run(() => svc.SuspendEligibilityAsync(Id, _note), "أوقفت الإتاحة وأُرسل التحديث للتحصيل", "Eligibility suspended; Collections updated"),
+        };
+        if (ok) _noteOpen = false;
+    }
+}

@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+.data/
+.env
+tests/e2e/shots/
+node_modules/
+TestResults/
