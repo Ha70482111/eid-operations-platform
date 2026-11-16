@@ -58,7 +58,7 @@
 |---|---|
 | **HTTP Error 500.30** | التطبيق ما قدرش يبدأ. غالبًا الـ Connection String غلط، أو `DefaultPassword` فاضية في أول تشغيل. راجع الخطوة 3. |
 | عاوز تشوف تفاصيل الخطأ | في `web.config` غيّر `stdoutLogEnabled="false"` لـ `"true"`، وافتح الموقع، وبعدين اقرأ الملف اللي في مجلد `logs`. **رجّعها `false` بعد ما تخلص.** |
-| **500.31 / 500.32** أو خطأ في تحميل الـ Module | في `web.config` غيّر `hostingModel="inprocess"` لـ `hostingModel="outofprocess"`. |
+| **500.34** (mixing hosting models) أو **500.31 / 500.32** | النسخة الحالية بتستخدم `hostingModel="outofprocess"`، وده المناسب لـ SmarterASP. لو لقيت `inprocess` في `web.config` غيّرها لـ `outofprocess`. |
 | الصفحة بتفتح بس الأزرار مش شغالة، أو بيظهر "Reconnecting…" | تأكد إن **WebSockets** مفعّلة للموقع من لوحة التحكم، لو الاختيار ده موجود. لو مش موجود ابعت لدعم SmarterASP وقولهم إن التطبيق Blazor Server ومحتاج WebSockets. |
 | بطء أول فتح بعد فترة | الاستضافة المشتركة بتوقف التطبيق لما محدش يستخدمه. ممكن تستخدم خدمة مراقبة مجانية (زي UptimeRobot) تفتح `/health` كل 5 دقايق. ده كمان بيخلي إرسال رسائل الربط بين النظامين يكمل في الخلفية من غير تأخير. |
 
