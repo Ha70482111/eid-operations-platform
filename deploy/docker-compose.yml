@@ -33,6 +33,8 @@ services:
       ConnectionStrings__Eid: "Server=sqlserver,1433;Database=EidCharity;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True"
       Seed__DefaultPassword: ${ADMIN_INITIAL_PASSWORD:?set ADMIN_INITIAL_PASSWORD in .env}
       Seed__DemoData: ${SEED_DEMO_DATA:-false}
+      Storage__Root: /app/data/files
+      DataProtection__KeysPath: /app/data/keys
       Jobs__Enabled: "true"
       Database__MigrateAndSeed: "true"
     volumes:

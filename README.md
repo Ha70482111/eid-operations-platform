@@ -58,13 +58,15 @@ node tests/e2e/acceptance.js                  # سيناريوهات قبول ع
 
 ## النشر
 
-راجع [docs/deploy-cloudflare.md](docs/deploy-cloudflare.md).
+- استضافة مشتركة (SmarterASP.NET / IIS): [docs/deploy-smarterasp.md](docs/deploy-smarterasp.md)
+- سيرفر خاص (Docker + Cloudflare Tunnel): [docs/deploy-cloudflare.md](docs/deploy-cloudflare.md)
 
 ## التوثيق
 
 - [مسار العمليات ومسارات الاعتماد](docs/workflows.md)
 - [الأدوار والصلاحيات (المصفوفة الكاملة)](docs/roles-and-permissions.md)
-- [النشر على Cloudflare](docs/deploy-cloudflare.md)
+- [النشر على SmarterASP.NET (استضافة Windows/IIS)](docs/deploy-smarterasp.md)
+- [النشر على سيرفر خاص بـ Docker + Cloudflare Tunnel](docs/deploy-cloudflare.md)
 
 ## Migrations
 

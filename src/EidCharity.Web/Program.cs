@@ -13,6 +13,15 @@ using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Relative storage paths (e.g. "App_Data/files" on IIS shared hosting) are resolved against the app's content root,
+// never against the worker process's current directory.
+foreach (var key in new[] { "Storage:Root", "DataProtection:KeysPath" })
+{
+    var value = builder.Configuration[key];
+    if (!string.IsNullOrWhiteSpace(value) && !Path.IsPathRooted(value))
+        builder.Configuration[key] = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, value));
+}
+
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddCascadingAuthenticationState();
