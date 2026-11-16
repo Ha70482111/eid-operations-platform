@@ -23,7 +23,7 @@
                 <StatusPill Tone="StatusText.Of(_p.ExecutionStatus)" />
                 <StatusPill Tone="StatusText.Of(_p.MappingSyncStatus)" />
                 @if (_p.PendingChangesJson is not null) { <StatusPill Css="warning">@T("تغيير جوهري بانتظار المالية", "Substantive change awaiting finance")</StatusPill> }
-                @if (!string.IsNullOrEmpty(_p.StatusReason)) { <span class="muted" style="font-size:12px">@_p.StatusReason</span> }
+                @if (!string.IsNullOrEmpty(_p.StatusReason)) { <span class="muted" style="font-size:14px">@_p.StatusReason</span> }
             </div>
             @if (_p.ApprovalStatus == ApprovalStatus.ReturnedToCenter)
             {
@@ -56,9 +56,9 @@
                                 <div><span>@T("المستفيدون المستهدفون", "Target beneficiaries")</span><strong>@_p.TargetBeneficiaries @_p.BeneficiaryUnit — @_p.BeneficiaryCategory</strong></div>
                                 <div><span>@T("مرجع الدراسة", "Study reference")</span><strong>@_p.StudyReference</strong></div>
                             </div>
-                            <div class="card-pad"><p style="font-size:13px;line-height:1.8">@(Ui.IsAr ? _p.SummaryAr : _p.SummaryEn)</p>
-                                @if (!string.IsNullOrEmpty(_p.Objectives)) { <p class="muted mt" style="font-size:12px"><strong>@T("الأهداف:", "Objectives:")</strong> @_p.Objectives</p> }
-                                @if (!string.IsNullOrEmpty(_p.Activities)) { <p class="muted" style="font-size:12px"><strong>@T("الأنشطة:", "Activities:")</strong> @_p.Activities</p> }</div>
+                            <div class="card-pad"><p style="font-size:15px;line-height:1.8">@(Ui.IsAr ? _p.SummaryAr : _p.SummaryEn)</p>
+                                @if (!string.IsNullOrEmpty(_p.Objectives)) { <p class="muted mt" style="font-size:14px"><strong>@T("الأهداف:", "Objectives:")</strong> @_p.Objectives</p> }
+                                @if (!string.IsNullOrEmpty(_p.Activities)) { <p class="muted" style="font-size:14px"><strong>@T("الأنشطة:", "Activities:")</strong> @_p.Activities</p> }</div>
                         </section>
                         <section class="data-card">
                             <div class="card-head"><div><h2>@T("الموقف المالي", "Financial position")</h2><p>@T("الإيرادات تأتي من نظام التحصيل فقط ولا تُدخل يدويًا", "Revenue comes only from Collections; never entered manually")</p></div></div>

@@ -2,7 +2,7 @@
 @if (Total > PageSize)
 {
     var pages = (int)Math.Ceiling(Total / (double)PageSize);
-    <div class="row between" style="padding:12px 18px;font-size:12px">
+    <div class="row between" style="padding:12px 18px;font-size:14px">
         <span class="muted">@Ui.T($"{Total} سجل — صفحة {Page} من {pages}", $"{Total} records — page {Page} of {pages}")</span>
         <div class="row">
             <button class="secondary-btn btn-sm" disabled="@(Page <= 1)" @onclick="() => PageChanged.InvokeAsync(Page - 1)">@Ui.T("السابق", "Previous")</button>

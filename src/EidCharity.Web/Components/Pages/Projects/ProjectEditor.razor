@@ -61,7 +61,7 @@
             </div>
             <div class="form-section">
                 <h3><Icon Name="badge-check" />@T("التراخيص المقترحة", "Proposed licenses")</h3>
-                <p class="muted" style="font-size:12px;margin-bottom:10px">@T("يقترح المركز التراخيص؛ والمالية تحدد الربط النهائي والفترات والسقوف.", "The center proposes licenses; finance sets the final mapping, periods and caps.")</p>
+                <p class="muted" style="font-size:14px;margin-bottom:10px">@T("يقترح المركز التراخيص؛ والمالية تحدد الربط النهائي والفترات والسقوف.", "The center proposes licenses; finance sets the final mapping, periods and caps.")</p>
                 <div class="grid-2">
                     @foreach (var l in _licenses.Where(l => l.Status is LicenseStatus.Active or LicenseStatus.NotStarted))
                     {

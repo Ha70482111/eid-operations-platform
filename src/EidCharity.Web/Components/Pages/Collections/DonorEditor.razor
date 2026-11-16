@@ -24,7 +24,7 @@
             <DonorForm Model="_d" />
             @if (_d.Type == DonorType.Organization)
             {
-                <h3 class="mt" style="font-weight:800;font-size:13px">@T("ممثلو الجهة", "Representatives")</h3>
+                <h3 class="mt" style="font-weight:800;font-size:15px">@T("ممثلو الجهة", "Representatives")</h3>
                 @foreach (var r in _d.Representatives)
                 {
                     <div class="form-grid three mt" style="align-items:end">

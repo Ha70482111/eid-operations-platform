@@ -1,5 +1,5 @@
 @inject Ui Ui
-<span class="money @(Value < 0 ? "neg" : "")" dir="ltr">@Ui.Money(Value)</span>@if (ShowCurrency) { <small class="cur">&nbsp;@(Currency is null or "QAR" ? Ui.Cur : Currency)</small> }
+<span class="money-wrap"><span class="money @(Value < 0 ? "neg" : "")" dir="ltr">@Ui.Money(Value)</span>@if (ShowCurrency) { <small class="cur">@(Currency is null or "QAR" ? Ui.Cur : Currency)</small> }</span>
 @code {
     [Parameter] public decimal Value { get; set; }
     [Parameter] public bool ShowCurrency { get; set; } = true;

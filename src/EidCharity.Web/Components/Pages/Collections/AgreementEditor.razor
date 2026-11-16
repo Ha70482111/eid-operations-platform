@@ -41,9 +41,9 @@
             <div class="form-section">
                 <h3><Icon Name="calendar-days" />@T("جدول الدفعات", "Payment schedule")</h3>
                 <div class="row mb">
-                    <span class="muted" style="font-size:12px">@T("توليد سريع:", "Quick generate:")</span>
+                    <span class="muted" style="font-size:14px">@T("توليد سريع:", "Quick generate:")</span>
                     <input class="input" type="number" min="1" max="60" style="width:80px" @bind="_genCount" />
-                    <span class="muted" style="font-size:12px">@T("دفعات شهرية من", "monthly installments from")</span>
+                    <span class="muted" style="font-size:14px">@T("دفعات شهرية من", "monthly installments from")</span>
                     <input class="input" type="date" style="width:auto" @bind="_genStart" />
                     <button class="secondary-btn btn-sm" @onclick="Generate">@T("توليد", "Generate")</button>
                 </div>
