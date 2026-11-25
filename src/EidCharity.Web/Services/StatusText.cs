@@ -159,6 +159,7 @@ public static class StatusText
         PaymentMethod.BankTransfer => new("neutral", "تحويل بنكي", "Bank transfer"),
         PaymentMethod.Pos => new("neutral", "نقاط بيع", "POS"),
         PaymentMethod.Online => new("neutral", "قناة إلكترونية", "Online"),
+        PaymentMethod.Cheque => new("neutral", "شيك", "Cheque"),
         _ => new("neutral", m.ToString(), m.ToString()),
     };
 

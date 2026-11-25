@@ -78,6 +78,6 @@ public class CollectionStatsService(IEidDb db, ICurrentUser user, CustodyService
 
     public static string MethodAr(PaymentMethod m) => m switch
     {
-        PaymentMethod.Cash => "نقدي", PaymentMethod.BankTransfer => "تحويل بنكي", PaymentMethod.Pos => "نقاط بيع", PaymentMethod.Online => "قناة إلكترونية", _ => m.ToString()
+        PaymentMethod.Cash => "نقدي", PaymentMethod.BankTransfer => "تحويل بنكي", PaymentMethod.Pos => "نقاط بيع", PaymentMethod.Online => "قناة إلكترونية", PaymentMethod.Cheque => "شيك", _ => m.ToString()
     };
 }

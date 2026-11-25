@@ -2340,11 +2340,58 @@ tfoot td { font-weight: 800; background: #fbf8fa; }
 .receipt .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 40px; font-size: 14.5px; color: var(--muted); }
 .receipt .sign div { border-top: 1px dashed #cdbfc6; padding-top: 8px; }
 .receipt .copy-tag { display: inline-block; border: 2px solid var(--danger); color: var(--danger); font-weight: 800; padding: 3px 10px; border-radius: 6px; transform: rotate(-4deg); }
+/* Receipt voucher: A4 sheet holding the same voucher twice (foundation copy on top, donor copy below) */
+.a4-scroll { overflow-x: auto; padding-bottom: 8px; }
+.a4-sheet { page: receipt-a4; width: 210mm; height: 297mm; margin: 0 auto; background: #fff; color: #1d1a1c; box-shadow: 0 2px 14px rgba(0,0,0,.12); display: flex; flex-direction: column; overflow: hidden; font-size: 10.5pt; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.a4-sheet .voucher { flex: 1 1 0; min-height: 0; padding: 7mm 10mm 5mm; display: flex; flex-direction: column; gap: 2.4mm; overflow: hidden; }
+.a4-sheet .cut-line { flex: 0 0 6mm; position: relative; display: flex; align-items: center; justify-content: center; }
+.a4-sheet .cut-line::before { content: ""; position: absolute; inset-inline: 4mm; top: 50%; border-top: 1px dashed #8d8189; }
+.a4-sheet .cut-line span { position: relative; background: #fff; padding: 0 8px; font-size: 8pt; color: #6d6168; }
+.voucher .v-head { display: grid; grid-template-columns: 44mm 1fr 44mm; align-items: center; border-bottom: 2px solid var(--green); padding-bottom: 2mm; }
+.voucher .v-head img { width: 32mm; }
+.voucher .v-title { text-align: center; }
+.voucher .v-title h2 { margin: 0; font-size: 15pt; font-weight: 800; color: var(--green); }
+.voucher .v-title span { display: block; font-size: 8.5pt; color: #5a5056; }
+.voucher .v-copy { text-align: end; display: flex; flex-direction: column; align-items: flex-end; gap: 1mm; }
+.voucher .v-copy strong { font-size: 8.5pt; border: 1px solid #b8aab2; border-radius: 4px; padding: 1px 6px; }
+.voucher .v-stamp { display: inline-block; border: 2px solid var(--danger); color: var(--danger); font-weight: 800; font-size: 9pt; padding: 0 8px; border-radius: 4px; transform: rotate(-4deg); }
+.voucher .v-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.2mm 4mm; }
+.voucher .v-meta > div { display: flex; gap: 4px; align-items: baseline; min-width: 0; border-bottom: 1px dotted #d6cbd1; padding-bottom: .6mm; }
+.voucher .v-meta span { color: #6d6168; white-space: nowrap; font-size: 9pt; }
+.voucher .v-meta span::after { content: ":"; }
+.voucher .v-meta b { font-weight: 700; overflow-wrap: anywhere; }
+.voucher .v-meta b[dir=ltr] { white-space: nowrap; overflow-wrap: normal; }
+.voucher .v-copy strong { white-space: nowrap; }
+.voucher .v-meta .span-2 { grid-column: span 2; }
+.voucher .v-meta .span-4 { grid-column: 1 / -1; }
+.voucher .v-table { width: 100%; border-collapse: collapse; font-size: 9pt; border: 1px solid #5a5056; margin: 0; }
+.voucher .v-table th { background: #efe8ec; font-weight: 700; padding: 1.2mm 1.5mm; border: 1px solid #5a5056; text-align: start; white-space: nowrap; }
+.voucher .v-table td { padding: 1mm 1.5mm; border: 1px solid #a99ca3; vertical-align: top; }
+.voucher .v-table td small { display: block; color: #6d6168; font-size: 7.5pt; }
+.voucher .v-table .num { text-align: end; white-space: nowrap; }
+.voucher .v-total { display: flex; align-items: baseline; gap: 3mm; border: 1px solid #5a5056; border-radius: 3px; padding: 1.5mm 3mm; background: #faf7f9; }
+.voucher .v-total span { color: #6d6168; white-space: nowrap; }
+.voucher .v-total .v-words { flex: 1; }
+.voucher .v-total .v-amount { font-size: 12pt; white-space: nowrap; }
+.voucher .v-foot { margin-top: auto; display: grid; grid-template-columns: 1.4fr 1fr 1fr auto; gap: 6mm; align-items: end; font-size: 9pt; }
+.voucher .v-foot span { color: #6d6168; }
+.voucher .v-foot span::after { content: ": "; }
+.voucher .v-sign { border-top: 1px dashed #8d8189; padding-top: 1mm; text-align: center; color: #6d6168; }
+.voucher .v-printed { color: #6d6168; font-size: 8pt; }
+.a4-sheet.dense { font-size: 9.5pt; }
+.a4-sheet.dense .voucher .v-table { font-size: 8pt; }
+.a4-sheet.dense .voucher .v-table td { padding: .5mm 1.2mm; }
+.a4-sheet.dense .voucher .v-table td small { display: inline; margin-inline-start: 4px; }
+@page receipt-a4 { size: A4 portrait; margin: 0; }
+
 @media print {
   .sidebar, .topbar, .no-print, .toast-stack, .page-heading .heading-actions { display: none !important; }
   .main { margin: 0 !important; width: 100% !important; }
   .page { padding: 0 !important; }
   .receipt { border: 0; }
+  .receipt-page .page-heading { display: none !important; }
+  .a4-scroll { overflow: visible; padding: 0; }
+  .a4-sheet { box-shadow: none; margin: 0; height: 296.5mm; }
   body, .app-root { background: #fff !important; }
 }
 

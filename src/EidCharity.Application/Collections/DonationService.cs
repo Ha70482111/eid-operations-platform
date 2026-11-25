@@ -41,6 +41,12 @@ public class DonationDraft
     public decimal Total => Lines.Sum(l => l.Amount);
 }
 
+public record ReceiptPrintLine(int Seq, string AccountNameAr, string AccountNameEn, string FinancialItemNumber, string DescriptionAr, string DescriptionEn,
+    string ProjectCode, string LicenseNumber, string CountryAr, string CountryEn, decimal Cost, int Count, decimal Amount, string? Instructions);
+
+public record ReceiptPrint(Receipt Receipt, List<ReceiptPrintLine> Lines, string UnitNameAr, string UnitNameEn, string OrgNameAr, string OrgNameEn,
+    string? PoBox, string? OrgPhone, string AmountWordsAr, string AmountWordsEn);
+
 public record DonationResult(int DonationId, string Number, DonationStatus Status, int? ReceiptId, string? ReceiptNumber, bool WasDuplicate, string? MessageAr = null, string? MessageEn = null);
 
 /// <summary>Payload sent to Projects for every effect on a project (idempotent by key).</summary>
@@ -83,6 +89,8 @@ public class DonationService(IEidDb db, ICurrentUser user, INumberGenerator numb
             PaymentMethod.Online => draft.ChannelResult switch { "Success" => DonationStatus.Confirmed, "Pending" => DonationStatus.PendingVerification, _ => DonationStatus.Failed },
             // A transfer image alone does not prove arrival: stays pending until a specialist confirms.
             PaymentMethod.BankTransfer => DonationStatus.PendingVerification,
+            // A cheque is received in hand: the receipt is issued now and the deposit is reconciled with the bank later.
+            PaymentMethod.Cheque => DonationStatus.Confirmed,
             _ => DonationStatus.Failed,
         };
 
@@ -165,6 +173,8 @@ public class DonationService(IEidDb db, ICurrentUser user, INumberGenerator numb
         {
             case PaymentMethod.BankTransfer when string.IsNullOrWhiteSpace(draft.PaymentReference) || string.IsNullOrWhiteSpace(draft.BankName) || draft.TransferDate is null:
                 throw new DomainException("التحويل البنكي يحتاج البنك والمرجع والتاريخ.", "Bank transfer requires bank, reference and date.");
+            case PaymentMethod.Cheque when string.IsNullOrWhiteSpace(draft.PaymentReference) || string.IsNullOrWhiteSpace(draft.BankName) || draft.TransferDate is null:
+                throw new DomainException("الشيك يحتاج البنك ورقم الشيك وتاريخه.", "A cheque requires the bank, cheque number and date.");
             case PaymentMethod.Pos when string.IsNullOrWhiteSpace(draft.PosTerminal) || string.IsNullOrWhiteSpace(draft.PaymentReference) || string.IsNullOrWhiteSpace(draft.ChannelResult):
                 throw new DomainException("نقاط البيع تحتاج الجهاز ورقم العملية والنتيجة.", "POS requires terminal, transaction number and result.");
             case PaymentMethod.Online when string.IsNullOrWhiteSpace(draft.PaymentReference) || string.IsNullOrWhiteSpace(draft.ChannelResult):
@@ -278,6 +288,52 @@ public class DonationService(IEidDb db, ICurrentUser user, INumberGenerator numb
                     .FirstOrDefaultAsync(x => x.Id == receiptId, ct) ?? throw ProjectService.NotFound();
         if (r.Donation!.CollectorUserId != user.UserId && !user.Has(Perm.DonationsViewAll)) throw new ForbiddenException(Perm.DonationsViewAll);
         return r;
+    }
+
+    /// <summary>Everything the printed A4 receipt shows, resolved from the receipt's donation and lines.</summary>
+    public async Task<ReceiptPrint> GetReceiptPrintAsync(int receiptId, CancellationToken ct = default)
+    {
+        var r = await GetReceiptAsync(receiptId, ct);
+        var d = r.Donation!;
+        var itemIds = d.Lines.Select(l => l.FinancialItemId).Distinct().ToList();
+        var projectIds = d.Lines.Select(l => l.ProjectId).Distinct().ToList();
+        var items = await db.FinancialItems.AsNoTracking().Where(f => itemIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
+        var projects = await db.Projects.AsNoTracking().Where(p => projectIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Location, p.ExecutionScope }).ToDictionaryAsync(p => p.Id, ct);
+        var center = await db.Centers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == d.CenterId, ct);
+        var keys = new[] { SettingKeys.OrganizationNameAr, SettingKeys.OrganizationNameEn, SettingKeys.OrganizationPoBox, SettingKeys.OrganizationPhone };
+        var settings = await db.Settings.AsNoTracking().Where(s => keys.Contains(s.Key)).ToDictionaryAsync(s => s.Key, s => s.Value, ct);
+        string? Setting(string k) => settings.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v) ? v : null;
+
+        var lines = d.Lines.OrderBy(l => l.Id).Select((l, i) =>
+        {
+            items.TryGetValue(l.FinancialItemId, out var fi);
+            projects.TryGetValue(l.ProjectId, out var p);
+            var (countryAr, countryEn) = ExecutionCountry(p?.ExecutionScope, p?.Location);
+            return new ReceiptPrintLine(i + 1, fi?.NameAr ?? l.FinancialItemNumber, fi?.NameEn ?? l.FinancialItemNumber, l.FinancialItemNumber,
+                l.ProjectNameAr, l.ProjectNameEn, l.ProjectCode, l.LicenseNumber, countryAr, countryEn, l.Amount, 1, l.Amount, l.Restrictions);
+        }).ToList();
+
+        return new ReceiptPrint(r, lines, center?.NameAr ?? "", center?.NameEn ?? "",
+            Setting(SettingKeys.OrganizationNameAr) ?? "مؤسسة الشيخ عيد بن محمد آل ثاني الخيرية",
+            Setting(SettingKeys.OrganizationNameEn) ?? "Sheikh Eid Bin Mohammad Al Thani Charitable Association",
+            Setting(SettingKeys.OrganizationPoBox), Setting(SettingKeys.OrganizationPhone),
+            AmountInWords.Arabic(r.Amount), AmountInWords.English(r.Amount));
+    }
+
+    private static readonly string[] QatarPlaces = ["قطر", "Qatar", "الدوحة", "Doha", "الريان", "الوكرة", "الخور", "الشمال", "الشحانية", "أم صلال", "الظعاين", "لوسيل"];
+
+    /// <summary>Execution country for the receipt: the project's location when set, otherwise its execution scope.</summary>
+    public static (string Ar, string En) ExecutionCountry(string? scope, string? location)
+    {
+        static bool InQatar(string v) => QatarPlaces.Any(q => v.Contains(q, StringComparison.OrdinalIgnoreCase)) && !v.Contains("خارج") && !v.Contains("outside", StringComparison.OrdinalIgnoreCase);
+        foreach (var v in new[] { location, scope })
+        {
+            if (string.IsNullOrWhiteSpace(v)) continue;
+            var t = v.Trim();
+            return InQatar(t) ? ("قطر", "Qatar") : (t, t);
+        }
+        return ("—", "—");
     }
 
     /// <summary>Reprint is a copy of the same receipt, not a new transaction.</summary>

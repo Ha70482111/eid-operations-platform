@@ -2,54 +2,27 @@
 @inherits EidPage
 @inject IJSRuntime JS
 
-<PageTitle>@T("سند قبض", "Receipt") @_r?.Number</PageTitle>
-<div class="page">
-    <PageHeader Eyebrow="C15" Title="@T("سند قبض", "Donation receipt")" Subtitle="@T("سند واحد للعملية مهما تعددت المشاريع. إعادة الطباعة نسخة من نفس السند وتُسجل في السجل.", "One receipt per transaction regardless of project count. Reprints are copies of the same receipt and are logged.")">
+<PageTitle>@T("سند قبض", "Receipt") @_p?.Receipt.Number</PageTitle>
+<div class="page receipt-page">
+    <PageHeader Eyebrow="C15" Title="@T("سند قبض", "Donation receipt")" Subtitle="@T("سند A4 بنسختين: النصف العلوي للحفظ لدى المؤسسة والنصف السفلي للمتبرع. إعادة الطباعة نسخة من نفس السند وتُسجل في السجل.", "A4 receipt in duplicate: the top half is kept by the foundation and the bottom half goes to the donor. Reprints are copies of the same receipt and are logged.")">
         <Actions>
-            @if (_r is not null)
+            @if (_p is not null)
             {
-                <a class="secondary-btn" href="/collections/transactions/@_r.DonationId"><Icon Name="receipt-text" />@T("تفاصيل العملية", "Transaction")</a>
-                <button class="primary-btn" disabled="@(Busy || _r.IsCancelled)" @onclick="Print"><Icon Name="printer" />@(_r.PrintCount > 0 ? T("طباعة نسخة", "Print copy") : T("طباعة السند", "Print receipt"))</button>
+                <a class="secondary-btn" href="/collections/transactions/@_p.Receipt.DonationId"><Icon Name="receipt-text" />@T("تفاصيل العملية", "Transaction")</a>
+                <button class="primary-btn" disabled="@(Busy || _p.Receipt.IsCancelled)" @onclick="Print"><Icon Name="printer" />@(_p.Receipt.PrintCount > 0 ? T("طباعة نسخة", "Print copy") : T("طباعة السند", "Print receipt"))</button>
             }
         </Actions>
     </PageHeader>
     <PageState Loading="Loading" Error="@Error">
-        @if (_r is not null)
+        @if (_p is not null)
         {
-            var d = _r.Donation!;
-            <article class="receipt" dir="@Ui.Dir">
-                <div class="receipt-head">
-                    <img src="eid-charity-logo.png" alt="Eid Charity" />
-                    <div>
-                        <h2>@T("سند قبض تبرع", "Donation receipt")</h2>
-                        <span dir="ltr">@_r.Number</span>
-                        <span>@Ui.DateTimeStr(_r.IssuedAt) @T("(توقيت قطر)", "(Qatar time)")</span>
-                        @if (_r.PrintCount > 0) { <span class="copy-tag">@T("نسخة", "COPY")</span> }
-                        @if (_r.IsCancelled) { <span class="copy-tag">@T("ملغى", "CANCELLED")</span> }
-                    </div>
+            <div class="a4-scroll">
+                <div class="a4-sheet @(_p.Lines.Count > 4 ? "dense" : "")" dir="@Ui.Dir">
+                    @Voucher(T("نسخة المؤسسة — للحفظ", "Foundation copy — file"))
+                    <div class="cut-line"><span>✂ @T("قص هنا", "Cut here")</span></div>
+                    @Voucher(T("نسخة المتبرع", "Donor copy"))
                 </div>
-                <div class="kv">
-                    <div><span>@T("استلمنا من", "Received from")</span><strong>@(d.Donor?.DisplayName(Ui.IsAr) ?? T("متبرع مجهول", "Unknown donor"))</strong></div>
-                    <div><span>@T("رقم المتبرع", "Donor no.")</span><strong dir="ltr">@d.Donor?.Number</strong></div>
-                    <div><span>@T("المبلغ", "Amount")</span><strong><Money Value="_r.Amount" Currency="@_r.Currency" /></strong></div>
-                    <div><span>@T("طريقة الدفع", "Payment method")</span><strong>@Ui.T(StatusText.Of(d.PaymentMethod).Ar, StatusText.Of(d.PaymentMethod).En) @(d.PaymentReference is null ? "" : $"· {d.PaymentReference}")</strong></div>
-                    <div><span>@T("رقم العملية", "Transaction no.")</span><strong dir="ltr">@d.Number</strong></div>
-                    <div><span>@T("المحصّل", "Collector")</span><strong>@d.CollectorName</strong></div>
-                    @if (!string.IsNullOrEmpty(_r.AgreementNumber)) { <div><span>@T("الاتفاقية", "Agreement")</span><strong dir="ltr">@_r.AgreementNumber</strong></div> }
-                </div>
-                <table>
-                    <thead><tr><th>@T("المشروع", "Project")</th><th>@T("البند المالي", "Financial item")</th><th>@T("الترخيص", "License")</th><th class="num">@T("المبلغ", "Amount")</th></tr></thead>
-                    <tbody>
-                        @foreach (var l in d.Lines)
-                        {
-                            <tr><td><strong>@Ui.N(l.ProjectNameAr, l.ProjectNameEn)</strong><span dir="ltr">@l.ProjectCode</span></td><td dir="ltr">@l.FinancialItemNumber</td><td dir="ltr">@l.LicenseNumber</td><td class="num"><Money Value="l.Amount" ShowCurrency="false" /></td></tr>
-                        }
-                    </tbody>
-                    <tfoot><tr><td colspan="3">@T("الإجمالي", "Total")</td><td class="num"><Money Value="_r.Amount" Currency="@_r.Currency" /></td></tr></tfoot>
-                </table>
-                <p class="total-words">@T("تُستخدم التبرعات في الأغراض المرخصة المذكورة أعلاه وفق أنظمة هيئة تنظيم الأعمال الخيرية في دولة قطر.", "Donations are used for the licensed purposes above, in line with the Regulatory Authority for Charitable Activities in Qatar.")</p>
-                <div class="sign"><div>@T("توقيع المحصّل", "Collector signature")</div><div>@T("ختم المؤسسة", "Foundation stamp")</div></div>
-            </article>
+            </div>
         }
     </PageState>
 </div>
@@ -57,22 +30,160 @@
 @code {
     [Parameter] public int Id { get; set; }
     [SupplyParameterFromQuery(Name = "print")] public int? AutoPrint { get; set; }
-    private Receipt? _r;
+    private ReceiptPrint? _p;
     private bool _autoDone;
+    private DateTime _printedAtUtc = DateTime.UtcNow;
 
-    protected override async Task LoadAsync() => _r = await S<DonationService>().GetReceiptAsync(Id);
+    protected override async Task LoadAsync() => _p = await S<DonationService>().GetReceiptPrintAsync(Id);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (AutoPrint == 1 && !_autoDone && _r is not null && _r.PrintCount == 0) { _autoDone = true; await Print(); }
+        if (AutoPrint == 1 && !_autoDone && _p is not null && _p.Receipt.PrintCount == 0) { _autoDone = true; await Print(); }
     }
 
     private async Task Print()
     {
+        _printedAtUtc = DateTime.UtcNow;
+        // The in-memory print count is still the one before this print, so the first print carries no "reprint" stamp.
         if (await Run(() => S<DonationService>().RecordPrintAsync(Id), reload: false))
         {
+            StateHasChanged();
             await JS.InvokeVoidAsync("eid.print");
             await Reload();
         }
     }
+
+    private string Salutation(Donor? donor) => donor switch
+    {
+        null => T("متبرع مجهول", "Unknown donor"),
+        { Privacy: not DonorPrivacy.Normal } => donor.DisplayName(Ui.IsAr),
+        { Type: DonorType.Organization } => T($"السادة / {donor.DisplayName(true)} المحترمين", $"M/s {donor.DisplayName(false)}"),
+        _ => T($"الفاضل/ة {donor.DisplayName(true)} المحترم/ة", donor.DisplayName(false)),
+    };
+
+    private static string? Phone(Donor? donor) =>
+        donor is null || donor.Privacy != DonorPrivacy.Normal || string.IsNullOrWhiteSpace(donor.Phone) ? null : $"{donor.CountryCode} {donor.Phone}".Trim();
+
+    private string PaymentText(Donation d)
+    {
+        var method = Ui.T(StatusText.Of(d.PaymentMethod).Ar, StatusText.Of(d.PaymentMethod).En);
+        var parts = new List<string> { method };
+        switch (d.PaymentMethod)
+        {
+            case PaymentMethod.Cheque:
+            case PaymentMethod.BankTransfer:
+                if (!string.IsNullOrWhiteSpace(d.BankName)) parts.Add(d.BankName!);
+                break;
+            case PaymentMethod.Pos:
+                if (!string.IsNullOrWhiteSpace(d.PosTerminal)) parts.Add(T($"جهاز {d.PosTerminal}", $"terminal {d.PosTerminal}"));
+                break;
+        }
+        return string.Join(" · ", parts);
+    }
+
+    private string ReferenceLabel(PaymentMethod m) => m switch
+    {
+        PaymentMethod.Cheque => T("رقم الشيك", "Cheque no."),
+        PaymentMethod.BankTransfer => T("مرجع التحويل", "Transfer ref."),
+        PaymentMethod.Pos => T("مرجع العملية", "Approval ref."),
+        _ => T("مرجع الدفع", "Payment ref."),
+    };
+
+    private RenderFragment Voucher(string copyLabel) => __builder =>
+    {
+        var r = _p!.Receipt;
+        var d = r.Donation!;
+        var phone = Phone(d.Donor);
+        <section class="voucher">
+            <header class="v-head">
+                <img src="eid-charity-logo.png" alt="Eid Charity" />
+                <div class="v-title">
+                    <h2>@T("سند قبض", "Receipt voucher")</h2>
+                    <span>@Ui.N(_p.OrgNameAr, _p.OrgNameEn)</span>
+                    @if (!string.IsNullOrWhiteSpace(_p.OrgPhone)) { <span dir="ltr">@_p.OrgPhone</span> }
+                </div>
+                <div class="v-copy">
+                    <strong>@copyLabel</strong>
+                    @if (r.PrintCount > 0) { <span class="v-stamp">@T("نسخة معادة", "REPRINT")</span> }
+                    @if (r.IsCancelled) { <span class="v-stamp">@T("ملغى", "CANCELLED")</span> }
+                </div>
+            </header>
+
+            <div class="v-meta">
+                <div><span>@T("رقم السند", "Voucher no.")</span><b dir="ltr">@r.Number</b></div>
+                <div><span>@T("التاريخ", "Date")</span><b dir="ltr">@Ui.Date(r.IssuedAt)</b></div>
+                <div><span>@T("طريقة الدفع", "Payment method")</span><b>@PaymentText(d)</b></div>
+                <div><span>@T("اسم الوحدة", "Unit name")</span><b>@Ui.N(_p.UnitNameAr, _p.UnitNameEn)</b></div>
+
+                <div class="span-2"><span>@T("الاسم", "Name")</span><b>@Salutation(d.Donor)</b></div>
+                <div><span>@T("رقم الهاتف", "Phone")</span><b dir="ltr">@(phone ?? "—")</b></div>
+                <div><span>@T("ص.ب", "P.O. Box")</span><b dir="ltr">@(_p.PoBox ?? "—")</b></div>
+
+                <div><span>@T("رقم المتبرع", "Donor no.")</span><b dir="ltr">@(d.Donor?.Number ?? "—")</b></div>
+                <div><span>@T("رقم العملية", "Transaction no.")</span><b dir="ltr">@d.Number</b></div>
+                @if (!string.IsNullOrWhiteSpace(d.PaymentReference))
+                {
+                    <div><span>@ReferenceLabel(d.PaymentMethod)</span><b dir="ltr">@d.PaymentReference</b></div>
+                }
+                @if (d.PaymentMethod is PaymentMethod.Cheque or PaymentMethod.BankTransfer && d.TransferDate is not null)
+                {
+                    <div><span>@(d.PaymentMethod == PaymentMethod.Cheque ? T("تاريخ الشيك", "Cheque date") : T("تاريخ التحويل", "Transfer date"))</span><b dir="ltr">@Ui.Date(d.TransferDate)</b></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(d.CollectionPoint))
+                {
+                    <div><span>@T("نقطة التحصيل", "Collection point")</span><b>@d.CollectionPoint</b></div>
+                }
+                @if (!string.IsNullOrEmpty(r.AgreementNumber))
+                {
+                    <div><span>@T("الاتفاقية", "Agreement")</span><b dir="ltr">@r.AgreementNumber</b></div>
+                }
+                <div class="span-4"><span>@T("البيان", "Statement")</span><b>@(string.IsNullOrWhiteSpace(d.Notes) ? "—" : d.Notes)</b></div>
+            </div>
+
+            <table class="v-table">
+                <thead>
+                    <tr>
+                        <th>@T("م", "#")</th>
+                        <th>@T("اسم الحساب", "Account name")</th>
+                        <th>@T("الشرح / الاسم", "Description")</th>
+                        <th>@T("الرقم", "No.")</th>
+                        <th>@T("بلد التنفيذ", "Country")</th>
+                        <th class="num">@T("التكلفة", "Cost")</th>
+                        <th class="num">@T("العدد", "Qty")</th>
+                        <th class="num">@T("المبلغ", "Amount")</th>
+                        <th>@T("تعليمات التنفيذ", "Execution instructions")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var l in _p.Lines)
+                    {
+                        <tr>
+                            <td class="num">@l.Seq</td>
+                            <td>@Ui.N(l.AccountNameAr, l.AccountNameEn)<small dir="ltr">@l.FinancialItemNumber</small></td>
+                            <td>@Ui.N(l.DescriptionAr, l.DescriptionEn)<small dir="ltr">@T("ترخيص", "Lic.") @l.LicenseNumber</small></td>
+                            <td dir="ltr">@l.ProjectCode</td>
+                            <td>@Ui.N(l.CountryAr, l.CountryEn)</td>
+                            <td class="num" dir="ltr">@Ui.Money(l.Cost, true)</td>
+                            <td class="num" dir="ltr">@l.Count</td>
+                            <td class="num" dir="ltr">@Ui.Money(l.Amount, true)</td>
+                            <td>@(string.IsNullOrWhiteSpace(l.Instructions) ? "—" : l.Instructions)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="v-total">
+                <span>@T("المبلغ الإجمالي", "Total amount")</span>
+                <b class="v-words">@(Ui.IsAr ? _p.AmountWordsAr : _p.AmountWordsEn)</b>
+                <b class="v-amount" dir="ltr">@Ui.Money(r.Amount, true) @Ui.Cur</b>
+            </div>
+
+            <footer class="v-foot">
+                <div><span>@T("المسؤول", "Responsible")</span><b>@(d.CollectorName ?? "—")</b></div>
+                <div class="v-sign">@T("التوقيع", "Signature")</div>
+                <div class="v-sign">@T("الختم", "Stamp")</div>
+                <div class="v-printed" dir="ltr">@QatarTime.ToLocal(_printedAtUtc).ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)</div>
+            </footer>
+        </section>
+    };
 }
