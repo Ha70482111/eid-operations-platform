@@ -138,6 +138,26 @@ else
                                     <div class="field"><label class="req">@T("البنك", "Bank")</label><input @bind="D.BankName" @bind:after="SaveDraft" /></div>
                                     <div class="field"><label class="req">@T("تاريخ التحويل", "Transfer date")</label><input type="date" @bind="D.TransferDate" @bind:after="SaveDraft" /></div>
                                     break;
+                                case PaymentMethod.Cheque:
+                                    <div class="full info-box"><Icon Name="landmark" /><div><strong>@T("يصدر السند فور استلام الشيك", "Receipt is issued when the cheque is received")</strong><span>@T("يظهر البنك ورقم الشيك وتاريخه في سند القبض، ويُطابق الإيداع مع البنك لاحقًا.", "The bank, cheque number and date appear on the receipt; the deposit is reconciled with the bank later.")</span></div></div>
+                                    <div class="field"><label class="req">@T("البنك", "Bank")</label>
+                                        <select value="@ChequeBankChoice" @onchange="OnChequeBankChanged">
+                                            <option value="">@T("— اختر البنك —", "— Select bank —")</option>
+                                            <optgroup label="@T("البنوك القطرية", "Qatari banks")">
+                                                @foreach (var b in QatarBanks.All.Take(10)) { <option value="@b.NameAr">@T(b.NameAr, b.NameEn)</option> }
+                                            </optgroup>
+                                            <optgroup label="@T("البنوك الأجنبية العاملة في قطر", "Foreign banks in Qatar")">
+                                                @foreach (var b in QatarBanks.All.Skip(10)) { <option value="@b.NameAr">@T(b.NameAr, b.NameEn)</option> }
+                                            </optgroup>
+                                            <option value="@OtherBank">@T(QatarBanks.OtherAr, QatarBanks.OtherEn)</option>
+                                        </select></div>
+                                    @if (_chequeOtherBank)
+                                    {
+                                        <div class="field"><label class="req">@T("اسم البنك", "Bank name")</label><input @bind="D.BankName" @bind:after="SaveDraft" /></div>
+                                    }
+                                    <div class="field"><label class="req">@T("رقم الشيك", "Cheque number")</label><input @bind="D.PaymentReference" @bind:after="SaveDraft" dir="ltr" /></div>
+                                    <div class="field"><label class="req">@T("تاريخ الشيك", "Cheque date")</label><input type="date" @bind="D.TransferDate" @bind:after="SaveDraft" /></div>
+                                    break;
                                 case PaymentMethod.Pos:
                                     <div class="field"><label class="req">@T("رقم الجهاز", "Terminal")</label><input @bind="D.PosTerminal" @bind:after="SaveDraft" dir="ltr" /></div>
                                     <div class="field"><label class="req">@T("مرجع العملية", "Approval reference")</label><input @bind="D.PaymentReference" @bind:after="SaveDraft" dir="ltr" /></div>
@@ -159,7 +179,7 @@ else
                     {
                         <h2>@T("راجع قبل التأكيد", "Review before confirmation")</h2>
                         <div class="review-line"><span>@T("المتبرع", "Donor")</span><strong>@D.DonorDisplay</strong><button @onclick="() => _step = 1" aria-label="Edit"><Icon Name="pencil-line" /></button></div>
-                        <div class="review-line"><span>@T("طريقة الدفع", "Payment")</span><strong>@MethodName(D.Method) @(string.IsNullOrEmpty(D.PaymentReference) ? "" : $"· {D.PaymentReference}")</strong><button @onclick="() => _step = 2" aria-label="Edit"><Icon Name="pencil-line" /></button></div>
+                        <div class="review-line"><span>@T("طريقة الدفع", "Payment")</span><strong>@MethodName(D.Method) @(D.Method == PaymentMethod.Cheque && !string.IsNullOrEmpty(D.BankName) ? $"· {D.BankName}" : "") @(string.IsNullOrEmpty(D.PaymentReference) ? "" : $"· {D.PaymentReference}")</strong><button @onclick="() => _step = 2" aria-label="Edit"><Icon Name="pencil-line" /></button></div>
                         <div class="allocation-table">
                             @foreach (var l in D.Lines)
                             {
@@ -235,6 +255,7 @@ else
     [
         (PaymentMethod.Cash, "banknote", "نقدي", "Cash"),
         (PaymentMethod.Pos, "credit-card", "نقاط بيع", "POS"),
+        (PaymentMethod.Cheque, "landmark", "شيك", "Cheque"),
         (PaymentMethod.BankTransfer, "building-2", "تحويل بنكي", "Bank transfer"),
         (PaymentMethod.Online, "globe", "قناة إلكترونية", "Online channel"),
     ];
@@ -287,7 +308,22 @@ else
 
     private async Task SetMethod(PaymentMethod m)
     {
+        if (m == PaymentMethod.Cheque && D.Method != PaymentMethod.Cheque) { D.BankName = null; D.PaymentReference = null; D.TransferDate = null; _chequeOtherBank = false; }
         D.Method = m; D.ChannelResult = null;
+        await Cart.SaveAsync();
+    }
+
+    // Cheques: banks operating in Qatar as a dropdown, with "other bank" as free text.
+    private const string OtherBank = "__other__";
+    private bool _chequeOtherBank;
+    private bool IsListedBank(string? name) => QatarBanks.All.Any(b => b.NameAr == name);
+    private string ChequeBankChoice => _chequeOtherBank || (!string.IsNullOrEmpty(D.BankName) && !IsListedBank(D.BankName)) ? OtherBank : D.BankName ?? "";
+
+    private async Task OnChequeBankChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString() ?? "";
+        _chequeOtherBank = v == OtherBank;
+        D.BankName = _chequeOtherBank ? (IsListedBank(D.BankName) ? null : D.BankName) : (v == "" ? null : v);
         await Cart.SaveAsync();
     }
 
@@ -296,7 +332,7 @@ else
         1 => D.DonorId is not null,
         2 => D.Method switch
         {
-            PaymentMethod.BankTransfer => !string.IsNullOrWhiteSpace(D.PaymentReference) && !string.IsNullOrWhiteSpace(D.BankName) && D.TransferDate is not null,
+            PaymentMethod.BankTransfer or PaymentMethod.Cheque => !string.IsNullOrWhiteSpace(D.PaymentReference) && !string.IsNullOrWhiteSpace(D.BankName) && D.TransferDate is not null,
             PaymentMethod.Pos => !string.IsNullOrWhiteSpace(D.PosTerminal) && !string.IsNullOrWhiteSpace(D.PaymentReference) && !string.IsNullOrEmpty(D.ChannelResult),
             PaymentMethod.Online => !string.IsNullOrWhiteSpace(D.PaymentReference) && !string.IsNullOrEmpty(D.ChannelResult),
             _ => true,

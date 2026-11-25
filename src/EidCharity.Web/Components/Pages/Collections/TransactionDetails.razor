@@ -32,7 +32,7 @@
                     <div><span>@T("الصافي", "Net")</span><strong><Money Value="_d.NetAmount" /></strong></div>
                     <div><span>@T("طريقة الدفع", "Method")</span><strong>@T(StatusText.Of(_d.PaymentMethod).Ar, StatusText.Of(_d.PaymentMethod).En)</strong></div>
                     <div><span>@T("مرجع الدفع", "Payment reference")</span><strong dir="ltr">@(_d.PaymentReference ?? "—")</strong></div>
-                    @if (_d.BankName is not null) { <div><span>@T("البنك / تاريخ التحويل", "Bank / transfer date")</span><strong>@_d.BankName · @Ui.Date(_d.TransferDate)</strong></div> }
+                    @if (_d.BankName is not null) { <div><span>@(_d.PaymentMethod == PaymentMethod.Cheque ? T("البنك / تاريخ الشيك", "Bank / cheque date") : T("البنك / تاريخ التحويل", "Bank / transfer date"))</span><strong>@_d.BankName · @Ui.Date(_d.TransferDate)</strong></div> }
                     @if (_d.PosTerminal is not null) { <div><span>@T("الجهاز / النتيجة", "Terminal / result")</span><strong dir="ltr">@_d.PosTerminal · @_d.PosResult</strong></div> }
                     @if (_d.ChannelFee > 0) { <div><span>@T("رسوم القناة", "Channel fee")</span><strong><Money Value="_d.ChannelFee" /></strong></div> }
                     <div><span>@T("المحصّل", "Collector")</span><strong>@_d.CollectorName</strong></div>

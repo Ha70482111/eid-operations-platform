@@ -61,6 +61,8 @@ public static class SettingKeys
     public const string ReceiptPrefix = "Receipts.Prefix";
     public const string OrganizationNameAr = "Org.NameAr";
     public const string OrganizationNameEn = "Org.NameEn";
+    public const string OrganizationPoBox = "Org.POBox";
+    public const string OrganizationPhone = "Org.Phone";
     public const string DefaultQuickAmounts = "Collections.DefaultQuickAmounts";
     public const string CustodyMaxCash = "Collections.CustodyMaxCash";
 }

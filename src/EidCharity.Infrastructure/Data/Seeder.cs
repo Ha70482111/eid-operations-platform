@@ -76,6 +76,8 @@ public static class Seeder
             (SettingKeys.ReceiptPrefix, "RCP", "بادئة رقم السند", "Receipt prefix"),
             (SettingKeys.OrganizationNameAr, "مؤسسة الشيخ عيد بن محمد آل ثاني الخيرية", "اسم المؤسسة (عربي)", "Organization name (Arabic)"),
             (SettingKeys.OrganizationNameEn, "Sheikh Eid Bin Mohammad Al Thani Charitable Association", "اسم المؤسسة (إنجليزي)", "Organization name (English)"),
+            (SettingKeys.OrganizationPoBox, "", "صندوق بريد المؤسسة (يظهر في سند القبض)", "Organization P.O. box (shown on receipts)"),
+            (SettingKeys.OrganizationPhone, "", "هاتف المؤسسة (يظهر في سند القبض)", "Organization phone (shown on receipts)"),
             (SettingKeys.DefaultQuickAmounts, "50,100,500,1000", "المبالغ السريعة الافتراضية", "Default quick amounts"),
             (SettingKeys.CustodyMaxCash, "20000", "الحد الأعلى للعهدة النقدية قبل التسليم", "Max cash custody before handover"),
         };

@@ -43,7 +43,40 @@ public class DonorRepresentative : Entity
     public string? AuthorizationReference { get; set; }
 }
 
-public enum PaymentMethod { Cash = 1, BankTransfer = 2, Pos = 3, Online = 4 }
+public enum PaymentMethod { Cash = 1, BankTransfer = 2, Pos = 3, Online = 4, Cheque = 5 }
+
+/// <summary>Banks operating in Qatar (licensed by Qatar Central Bank), offered as a dropdown for cheques.</summary>
+public static class QatarBanks
+{
+    public record Bank(string NameAr, string NameEn);
+
+    public static readonly IReadOnlyList<Bank> All =
+    [
+        // Qatari banks
+        new("بنك قطر الوطني (QNB)", "Qatar National Bank (QNB)"),
+        new("البنك التجاري", "Commercial Bank of Qatar"),
+        new("بنك الدوحة", "Doha Bank"),
+        new("البنك الأهلي", "Ahlibank"),
+        new("مصرف قطر الإسلامي (QIB)", "Qatar Islamic Bank (QIB)"),
+        new("مصرف الريان", "Masraf Al Rayan"),
+        new("بنك قطر الدولي الإسلامي (QIIB)", "Qatar International Islamic Bank (QIIB)"),
+        new("بنك دخان", "Dukhan Bank"),
+        new("بنك لشا", "Lesha Bank"),
+        new("بنك قطر للتنمية", "Qatar Development Bank"),
+        // Foreign banks with branches in Qatar
+        new("بنك HSBC الشرق الأوسط", "HSBC Bank Middle East"),
+        new("بنك ستاندرد تشارترد", "Standard Chartered Bank"),
+        new("بنك المشرق", "Mashreq Bank"),
+        new("البنك العربي", "Arab Bank"),
+        new("بنك بي إن بي باريبا", "BNP Paribas"),
+        new("البنك المتحد المحدود (UBL)", "United Bank Limited (UBL)"),
+        new("بنك صادرات إيران", "Bank Saderat Iran"),
+        new("بنك ملي إيران", "Bank Melli Iran"),
+    ];
+
+    public const string OtherAr = "بنك آخر";
+    public const string OtherEn = "Other bank";
+}
 public enum DonationStatus { Draft = 0, PendingVerification = 1, Confirmed = 2, Failed = 3, Cancelled = 4, PartiallyRefunded = 5, Refunded = 6 }
 public enum SettlementStatus { NotApplicable = 0, Unsettled = 1, Settled = 2, Difference = 3 }
 
